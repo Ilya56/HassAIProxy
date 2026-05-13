@@ -23,6 +23,33 @@ class HaConfigResponse(BaseModel):
     version: str | None = None
 
 
+class EntitySummary(BaseModel):
+    entity_id: str
+    domain: str | None = None
+    friendly_name: str | None = None
+    state: str | None = None
+
+
+class EntityListResponse(BaseModel):
+    entities: list[EntitySummary]
+
+
+class AutomationListResponse(BaseModel):
+    automations: list[EntitySummary]
+
+
+class ScriptListResponse(BaseModel):
+    scripts: list[EntitySummary]
+
+
+class EntityState(BaseModel):
+    entity_id: str
+    state: str
+    attributes: dict[str, object]
+    last_changed: str
+    last_updated: str
+
+
 class FileInfo(BaseModel):
     path: str
     writable: bool
