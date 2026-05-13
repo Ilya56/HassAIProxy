@@ -103,3 +103,69 @@ def test_list_allowed_files(monkeypatch, tmp_path) -> None:
         "/config/packages/ai/test.yaml",
     ]
     get_settings.cache_clear()
+
+
+def test_search_allowed_files_case_insensitive(monkeypatch, tmp_path) -> None:
+    config_file = tmp_path / "packages" / "ai" / "co2.yaml"
+    config_file.parent.mkdir(parents=True)
+    config_file.write_text("alias: Ventilation CO2\ntrigger: []\n", encoding="utf-8")
+    client = _client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/files/search",
+        params={"query": "co2"},
+        headers={"Authorization": "Bearer test-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "matches": [
+            {
+                "path": "/config/packages/ai/co2.yaml",
+                "line": 1,
+                "text": "alias: Ventilation CO2",
+            }
+        ]
+    }
+    get_settings.cache_clear()
+
+
+def test_search_allowed_file_by_path(monkeypatch, tmp_path) -> None:
+    first_file = tmp_path / "packages" / "ai" / "first.yaml"
+    second_file = tmp_path / "packages" / "ai" / "second.yaml"
+    first_file.parent.mkdir(parents=True)
+    first_file.write_text("alias: target\n", encoding="utf-8")
+    second_file.write_text("alias: target\n", encoding="utf-8")
+    client = _client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/files/search",
+        params={"query": "target", "path": "/config/packages/ai/second.yaml"},
+        headers={"Authorization": "Bearer test-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matches"] == [
+        {"path": "/config/packages/ai/second.yaml", "line": 1, "text": "alias: target"}
+    ]
+    get_settings.cache_clear()
+
+
+def test_search_allowed_files_by_prefix(monkeypatch, tmp_path) -> None:
+    (tmp_path / "configuration.yaml").write_text("homeassistant: target\n", encoding="utf-8")
+    ai_file = tmp_path / "packages" / "ai" / "target.yaml"
+    ai_file.parent.mkdir(parents=True)
+    ai_file.write_text("alias: target\n", encoding="utf-8")
+    client = _client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/files/search",
+        params={"query": "target", "path_prefix": "/config/packages/ai"},
+        headers={"Authorization": "Bearer test-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matches"] == [
+        {"path": "/config/packages/ai/target.yaml", "line": 1, "text": "alias: target"}
+    ]
+    get_settings.cache_clear()

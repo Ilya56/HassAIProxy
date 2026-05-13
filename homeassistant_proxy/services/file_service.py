@@ -7,10 +7,11 @@ from pathlib import PurePosixPath
 
 from homeassistant_proxy.config import Settings
 from homeassistant_proxy.core.errors import ApiError
-from homeassistant_proxy.models.api_models import FileContent, FileInfo
+from homeassistant_proxy.models.api_models import FileContent, FileInfo, FileSearchMatch
 from homeassistant_proxy.services.file_backends import FileBackend, build_file_backend
 
 CONFIG_PREFIX = "/config"
+MAX_SEARCH_MATCHES = 100
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,47 @@ class FileService:
             content_hash=self._hash_content(content),
             modified_at=file_stat.modified_at.isoformat(),
         )
+
+    async def search_files(
+        self,
+        *,
+        query: str,
+        path: str | None = None,
+        path_prefix: str | None = None,
+    ) -> list[FileSearchMatch]:
+        normalized_query = query.strip()
+        if normalized_query == "":
+            raise ApiError(
+                status_code=422,
+                code="files.empty_search_query",
+                message="Search query must not be empty.",
+                retryable=False,
+            )
+
+        if path is not None:
+            candidates = [await self.read_file(path)]
+        else:
+            files = await self.list_files(path_prefix=path_prefix)
+            candidates = []
+            for file_info in files:
+                candidates.append(await self.read_file(file_info.path))
+
+        needle = normalized_query.casefold()
+        matches: list[FileSearchMatch] = []
+        for file_content in candidates:
+            for line_number, line in enumerate(file_content.content.splitlines(), start=1):
+                if needle in line.casefold():
+                    matches.append(
+                        FileSearchMatch(
+                            path=file_content.path,
+                            line=line_number,
+                            text=line,
+                        )
+                    )
+                    if len(matches) >= MAX_SEARCH_MATCHES:
+                        return matches
+
+        return matches
 
     def _resolve_allowed_path(self, path: str) -> ResolvedFilePath:
         api_path = self._normalize_api_path(path)

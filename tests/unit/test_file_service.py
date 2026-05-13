@@ -6,7 +6,7 @@ import pytest
 
 from homeassistant_proxy.config import Settings
 from homeassistant_proxy.core.errors import ApiError
-from homeassistant_proxy.models.api_models import FileContent
+from homeassistant_proxy.models.api_models import FileContent, FileSearchMatch
 from homeassistant_proxy.services.file_backends import FileBackendStat, SftpFileBackend, build_file_backend
 from homeassistant_proxy.services.file_service import FileService
 
@@ -71,3 +71,33 @@ def test_sftp_backend_requires_host() -> None:
         build_file_backend(settings)
 
     assert exc_info.value.code == "files.sftp_not_configured"
+
+
+def test_file_service_search_limits_matches_to_100() -> None:
+    class ManyMatchesBackend(MemoryFileBackend):
+        async def list_files(self, relative_dir: str) -> list[str]:
+            return ["packages/ai/many.yaml"]
+
+        async def read_text(self, relative_path: str) -> str:
+            return "\n".join(["target"] * 101)
+
+        async def stat(self, relative_path: str) -> FileBackendStat:
+            return FileBackendStat(size_bytes=707, modified_at=datetime(2026, 5, 13, tzinfo=UTC))
+
+    settings = Settings(allowed_read_globs=["/config/packages/ai/*.yaml"])
+    service = FileService(settings, backend=ManyMatchesBackend())
+
+    matches = asyncio.run(service.search_files(query="target"))
+
+    assert len(matches) == 100
+    assert matches[0] == FileSearchMatch(path="/config/packages/ai/many.yaml", line=1, text="target")
+    assert matches[-1] == FileSearchMatch(path="/config/packages/ai/many.yaml", line=100, text="target")
+
+
+def test_file_service_search_rejects_empty_query() -> None:
+    service = FileService(Settings(), backend=MemoryFileBackend())
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(service.search_files(query="  "))
+
+    assert exc_info.value.code == "files.empty_search_query"

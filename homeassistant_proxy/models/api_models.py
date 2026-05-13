@@ -47,6 +47,10 @@ class FileSearchMatch(BaseModel):
     text: str
 
 
+class FileSearchResponse(BaseModel):
+    matches: list[FileSearchMatch]
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str
