@@ -23,6 +23,30 @@ class HaConfigResponse(BaseModel):
     version: str | None = None
 
 
+class FileInfo(BaseModel):
+    path: str
+    writable: bool
+    size_bytes: int | None = None
+    content_hash: str | None = None
+    modified_at: str | None = None
+
+
+class FileListResponse(BaseModel):
+    files: list[FileInfo]
+
+
+class FileContent(BaseModel):
+    path: str
+    content: str
+    content_hash: str
+
+
+class FileSearchMatch(BaseModel):
+    path: str
+    line: int
+    text: str
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

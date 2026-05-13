@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 AppEnv = Literal["dev", "staging", "prod"]
+FileBackend = Literal["local", "sftp"]
 
 
 def _get_env(name: str, default: str) -> str:
@@ -29,6 +30,12 @@ class Settings(BaseModel):
     ha_token: str = ""
     sqlite_path: str = "./data/homeassistant_proxy.sqlite3"
     config_root: str = "/config"
+    file_backend: FileBackend = "local"
+    sftp_host: str = ""
+    sftp_port: int = 22
+    sftp_username: str = "root"
+    sftp_private_key_path: str = ""
+    sftp_root: str = "/config"
     readonly_mode: bool = False
     allowed_write_globs: list[str] = Field(default_factory=lambda: ["/config/packages/ai/*.yaml"])
     allowed_read_globs: list[str] = Field(
@@ -71,6 +78,12 @@ def get_settings() -> Settings:
         ha_token=_get_env("HA_TOKEN", ""),
         sqlite_path=_get_env("SQLITE_PATH", "./data/homeassistant_proxy.sqlite3"),
         config_root=_get_env("CONFIG_ROOT", "/config"),
+        file_backend=_get_env("FILE_BACKEND", "local"),
+        sftp_host=_get_env("SFTP_HOST", ""),
+        sftp_port=int(_get_env("SFTP_PORT", "22")),
+        sftp_username=_get_env("SFTP_USERNAME", "root"),
+        sftp_private_key_path=_get_env("SFTP_PRIVATE_KEY_PATH", ""),
+        sftp_root=_get_env("SFTP_ROOT", "/config"),
         readonly_mode=_parse_bool(_get_env("READONLY_MODE", "false")),
         allowed_write_globs=_get_env("ALLOWED_WRITE_GLOBS", "/config/packages/ai/*.yaml"),
         allowed_read_globs=_get_env(
@@ -84,4 +97,3 @@ def get_settings() -> Settings:
         max_file_size_kb=int(_get_env("MAX_FILE_SIZE_KB", "256")),
         request_timeout_seconds=float(_get_env("REQUEST_TIMEOUT_SECONDS", "10")),
     )
-

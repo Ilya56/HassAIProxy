@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from homeassistant_proxy.api.capabilities import router as capabilities_router
+from homeassistant_proxy.api.files import router as files_router
 from homeassistant_proxy.api.ha_read import router as ha_read_router
 from homeassistant_proxy.api.health import router as health_router
 from homeassistant_proxy.core.errors import install_error_handlers
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(capabilities_router)
     app.include_router(ha_read_router)
+    app.include_router(files_router)
     return app
 
 

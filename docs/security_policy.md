@@ -115,6 +115,24 @@ The token must:
 - be revocable quickly;
 - be rotated when needed.
 
+## Proxy to Home Assistant File Transport
+
+File transport credentials are separate from the Home Assistant REST API token.
+
+If SFTP is used through the Advanced SSH & Web Terminal add-on:
+
+- use a dedicated SSH key for the proxy;
+- prefer public key authentication through `authorized_keys`;
+- do not reuse a personal development key if a separate proxy key is practical;
+- do not log private keys, passphrases, remote command output, or file contents from forbidden files;
+- treat SFTP as transport only, not as authorization;
+- enforce the same allowed paths and forbidden paths as every other backend;
+- keep the proxy in read-only mode until the draft/apply/backup workflow is implemented and tested
+  over SFTP.
+
+The SFTP backend must not provide shell access to GPT. The proxy may use SFTP file operations only.
+No endpoint may expose arbitrary command execution.
+
 ## Mandatory Safeguards
 
 The service must include:
@@ -122,6 +140,7 @@ The service must include:
 - IP rate limiting;
 - request size limits;
 - timeouts for Home Assistant API calls;
+- timeouts for remote file transport calls;
 - path traversal protection;
 - symbolic link protection;
 - secret redaction in logs;

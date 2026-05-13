@@ -90,6 +90,23 @@ Used only by the proxy service. The Home Assistant token must not be exposed to 
 
 Provides access to a limited set of `/config` files. It must resolve paths safely before every read or write.
 
+The public API should always use Home Assistant-style paths such as `/config/automations.yaml`,
+regardless of how the proxy reaches the underlying files. Local filesystem paths, network share
+paths, SSH paths, or container mount paths are implementation details and must not be exposed to GPT.
+
+The file layer should be implemented behind a backend boundary so deployment can choose one of
+several access methods without changing the API contract:
+
+- local filesystem backend for a mounted `/config` directory;
+- network share backend through a Windows or Linux mount, such as Samba/NFS mounted locally;
+- SFTP backend for development or constrained deployments where Home Assistant OS exposes config
+  through the Advanced SSH & Web Terminal add-on.
+
+For the SFTP backend, the proxy would connect to the Home Assistant SSH/SFTP endpoint using a
+dedicated key and map API paths under `/config` to remote SFTP paths under the configured remote
+config root. The proxy must still enforce its own allowlist, forbidden path policy, draft workflow,
+hash checks, and audit logging. SFTP reachability is only transport; it is not authorization.
+
 ### Storage Layer
 
 Stores drafts, file versions, backups metadata, and audit log entries.
@@ -101,8 +118,16 @@ The best long-term approach is to expose `/config` to the proxy as a read/write 
 If the proxy runs outside HA OS, options include:
 
 - exporting configuration through Samba or NFS and mounting it read/write;
+- using SFTP through the Advanced SSH & Web Terminal add-on for development or when a direct mount
+  is not available;
 - synchronizing a separate working folder;
 - working only through the dedicated `packages/ai` folder.
+
+SFTP is a practical development option because the owner already uses Advanced SSH & Web Terminal
+with SFTP and `authorized_keys` from another laptop. It should be treated as a transport backend,
+not as a reason to broaden file permissions. If SFTP is used, the proxy should use a dedicated SSH
+key, no password authentication, a limited network path to Home Assistant, and the same `/config`
+allowlist rules as the local backend.
 
 The safest initial compromise is:
 

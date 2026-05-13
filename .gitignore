@@ -10,3 +10,6 @@ gen
 # Python libs
 .venv
 .uv-cache
+
+# Secrets
+.env

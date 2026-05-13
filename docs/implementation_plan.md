@@ -44,11 +44,15 @@ Build:
 - list/read/search for files;
 - file metadata;
 - path allowlist;
+- file backend boundary with at least local filesystem support;
+- optional SFTP read backend for Home Assistant OS deployments where `/config` is available through
+  Advanced SSH & Web Terminal rather than a direct mount;
 - hard rejection of everything outside the allowlist.
 
 Ready when:
 
 - GPT can ask about home state and read allowed configuration files.
+- the file API returns stable `/config/...` paths regardless of backend.
 
 ## Stage 3: Draft Engine
 
@@ -59,6 +63,7 @@ Build:
 - diff preview;
 - version hash;
 - basic YAML validation.
+- backend-independent file reads for base content and hashes.
 
 Ready when:
 
@@ -73,6 +78,7 @@ Build:
 - `POST /drafts/{draft_id}/rollback`;
 - post-write validation;
 - audit log.
+- backend-independent writes, with local and SFTP behavior tested before enabling writes on SFTP.
 
 Ready when:
 
@@ -111,6 +117,7 @@ Build:
 - rate limiting;
 - path traversal tests;
 - negative tests;
+- remote file transport timeout and failure tests;
 - token revoke and rotation procedure;
 - emergency read-only mode.
 

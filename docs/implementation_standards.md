@@ -27,6 +27,7 @@ ha-proxy/
     services/
       ha_client.py
       file_service.py
+      file_backends.py
       draft_service.py
       diff_service.py
       validation_service.py
@@ -67,6 +68,24 @@ ha-proxy/
 - Use one shared error response model.
 - Set explicit timeouts for every Home Assistant HTTP call.
 - Prefer `structlog` or standard `logging` configured for JSON output.
+
+## File Backend Standards
+
+The file API must expose only Home Assistant-style `/config/...` paths. It must not expose local
+Windows paths, container paths, mounted share paths, or SFTP-specific paths in responses or errors.
+
+The file service should own path policy and delegate actual IO to a backend. Backends must not decide
+whether a path is allowed; they should only read, list, stat, and later write the already-validated
+path they are given.
+
+Initial backend shape:
+
+- `local`: reads from a local filesystem `CONFIG_ROOT`.
+- `sftp`: reads from a remote SFTP root corresponding to Home Assistant `/config`.
+
+The SFTP backend is intended for development and deployments where Home Assistant OS is only
+reachable through Advanced SSH & Web Terminal. It should use key-based authentication with a
+dedicated proxy key. The selected Python SSH/SFTP dependency is `asyncssh`.
 
 ## Error Format
 
@@ -113,6 +132,12 @@ Initial environment variables:
 - `HA_TOKEN`
 - `SQLITE_PATH`
 - `CONFIG_ROOT`
+- `FILE_BACKEND`
+- `SFTP_HOST`
+- `SFTP_PORT`
+- `SFTP_USERNAME`
+- `SFTP_PRIVATE_KEY_PATH`
+- `SFTP_ROOT`
 - `READONLY_MODE`
 - `ALLOWED_WRITE_GLOBS`
 - `ALLOWED_READ_GLOBS`

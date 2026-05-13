@@ -5,6 +5,7 @@ from fastapi import Depends
 
 from homeassistant_proxy.config import Settings, get_settings
 from homeassistant_proxy.core.auth import require_api_key
+from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.ha_client import HomeAssistantClient
 
 Authenticated = Annotated[None, Depends(require_api_key)]
@@ -20,3 +21,10 @@ async def get_ha_client(settings: SettingsDep) -> AsyncIterator[HomeAssistantCli
 
 
 HaClientDep = Annotated[HomeAssistantClient, Depends(get_ha_client)]
+
+
+def get_file_service(settings: SettingsDep) -> FileService:
+    return FileService(settings)
+
+
+FileServiceDep = Annotated[FileService, Depends(get_file_service)]
