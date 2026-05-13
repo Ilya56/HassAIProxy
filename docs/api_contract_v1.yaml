@@ -1,0 +1,1016 @@
+openapi: 3.1.0
+info:
+  title: Home Assistant GPT Proxy API
+  version: 0.1.0
+  description: >
+    Target API contract for a narrow proxy between a Custom GPT Action and
+    Home Assistant. The API is designed around read-only inspection, draft
+    changes, explicit approval, validation, application, reload, audit, and
+    rollback.
+servers:
+  - url: https://proxy.example.local
+    description: Replace with the deployed proxy base URL.
+security:
+  - bearerApiKey: []
+tags:
+  - name: Health
+  - name: Capabilities
+  - name: Home Assistant Read
+  - name: Home Assistant Services
+  - name: Files
+  - name: Drafts
+  - name: Config Operations
+  - name: Audit
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Check proxy health.
+      responses:
+        "200":
+          description: Proxy is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /capabilities:
+    get:
+      tags: [Capabilities]
+      operationId: getCapabilities
+      summary: Return enabled proxy capabilities and allowlists.
+      responses:
+        "200":
+          description: Proxy capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilitiesResponse"
+
+  /ha/config:
+    get:
+      tags: [Home Assistant Read]
+      operationId: getHaConfig
+      summary: Return basic Home Assistant configuration metadata.
+      responses:
+        "200":
+          description: Home Assistant configuration metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HaConfig"
+
+  /ha/entities:
+    get:
+      tags: [Home Assistant Read]
+      operationId: listEntities
+      summary: List Home Assistant entities visible to the proxy.
+      parameters:
+        - $ref: "#/components/parameters/Query"
+        - $ref: "#/components/parameters/Domain"
+        - $ref: "#/components/parameters/AreaId"
+        - $ref: "#/components/parameters/DeviceClass"
+      responses:
+        "200":
+          description: Entity list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entities]
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntitySummary"
+
+  /ha/entities/{entity_id}:
+    get:
+      tags: [Home Assistant Read]
+      operationId: getEntityState
+      summary: Read one Home Assistant entity state.
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entity state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityState"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ha/automations:
+    get:
+      tags: [Home Assistant Read]
+      operationId: listAutomations
+      summary: List Home Assistant automations.
+      parameters:
+        - $ref: "#/components/parameters/Query"
+      responses:
+        "200":
+          description: Automation list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [automations]
+                properties:
+                  automations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntitySummary"
+
+  /ha/scripts:
+    get:
+      tags: [Home Assistant Read]
+      operationId: listScripts
+      summary: List Home Assistant scripts.
+      parameters:
+        - $ref: "#/components/parameters/Query"
+      responses:
+        "200":
+          description: Script list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scripts]
+                properties:
+                  scripts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntitySummary"
+
+  /ha/services/call:
+    post:
+      tags: [Home Assistant Services]
+      operationId: callHaService
+      summary: Call an explicitly allowed Home Assistant service.
+      description: Service calls must be restricted by a server-side allowlist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceCallRequest"
+      responses:
+        "200":
+          description: Service call result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCallResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /files/list:
+    get:
+      tags: [Files]
+      operationId: listAllowedFiles
+      summary: List files the proxy is allowed to expose.
+      parameters:
+        - $ref: "#/components/parameters/PathPrefix"
+      responses:
+        "200":
+          description: Allowed files.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [files]
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FileInfo"
+
+  /files/read:
+    get:
+      tags: [Files]
+      operationId: readAllowedFile
+      summary: Read one allowed configuration file.
+      parameters:
+        - $ref: "#/components/parameters/PathQuery"
+      responses:
+        "200":
+          description: File content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContent"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /files/search:
+    get:
+      tags: [Files]
+      operationId: searchAllowedFiles
+      summary: Search within allowed configuration files.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: path
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PathPrefix"
+      responses:
+        "200":
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matches]
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FileSearchMatch"
+
+  /files/metadata:
+    get:
+      tags: [Files]
+      operationId: getFileMetadata
+      summary: Return metadata for one allowed configuration file.
+      parameters:
+        - $ref: "#/components/parameters/PathQuery"
+      responses:
+        "200":
+          description: File metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileInfo"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/create:
+    post:
+      tags: [Drafts]
+      operationId: createDraft
+      summary: Create a draft file change without applying it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDraftRequest"
+      responses:
+        "201":
+          description: Draft created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /drafts/{draft_id}:
+    get:
+      tags: [Drafts]
+      operationId: getDraft
+      summary: Get draft details.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: Draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/{draft_id}/diff:
+    get:
+      tags: [Drafts]
+      operationId: getDraftDiff
+      summary: Get the unified diff for a draft.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: Draft diff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftDiff"
+
+  /drafts/{draft_id}/validate:
+    post:
+      tags: [Drafts]
+      operationId: validateDraft
+      summary: Validate a draft without applying it.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+
+  /drafts/{draft_id}/risk_assessment:
+    post:
+      tags: [Drafts]
+      operationId: assessDraftRisk
+      summary: Estimate risk and expected post-apply action for a draft.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: Risk assessment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskAssessment"
+
+  /drafts/{draft_id}/apply:
+    post:
+      tags: [Drafts]
+      operationId: applyDraft
+      summary: Apply an approved draft after explicit user confirmation.
+      description: This is a Level C action and must require explicit confirmation before execution.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "200":
+          description: Apply result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyResult"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /drafts/{draft_id}/rollback:
+    post:
+      tags: [Drafts]
+      operationId: rollbackDraft
+      summary: Roll back the change associated with a draft.
+      description: This is a Level C action and must require explicit confirmation before execution.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "200":
+          description: Rollback result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RollbackResult"
+
+  /ha/config/check:
+    post:
+      tags: [Config Operations]
+      operationId: checkHaConfig
+      summary: Run Home Assistant configuration check.
+      responses:
+        "200":
+          description: Configuration check result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+
+  /ha/reload/automations:
+    post:
+      tags: [Config Operations]
+      operationId: reloadAutomations
+      summary: Reload Home Assistant automations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "200":
+          description: Reload result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReloadResult"
+
+  /ha/reload/scripts:
+    post:
+      tags: [Config Operations]
+      operationId: reloadScripts
+      summary: Reload Home Assistant scripts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "200":
+          description: Reload result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReloadResult"
+
+  /ha/reload/all:
+    post:
+      tags: [Config Operations]
+      operationId: quickReloadAll
+      summary: Perform quick reload where supported by Home Assistant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "200":
+          description: Reload result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReloadResult"
+
+  /ha/restart:
+    post:
+      tags: [Config Operations]
+      operationId: restartHomeAssistant
+      summary: Restart Home Assistant.
+      description: Rare Level C action. Never call automatically from apply flow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmedActionRequest"
+      responses:
+        "202":
+          description: Restart accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionResult"
+
+  /audit/logs:
+    get:
+      tags: [Audit]
+      operationId: listAuditLogs
+      summary: List audit log entries.
+      parameters:
+        - name: action_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: date_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Audit logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logs]
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLog"
+
+  /audit/logs/{log_id}:
+    get:
+      tags: [Audit]
+      operationId: getAuditLog
+      summary: Get one audit log entry.
+      parameters:
+        - name: log_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+
+  parameters:
+    Query:
+      name: query
+      in: query
+      required: false
+      schema:
+        type: string
+    Domain:
+      name: domain
+      in: query
+      required: false
+      schema:
+        type: string
+    AreaId:
+      name: area_id
+      in: query
+      required: false
+      schema:
+        type: string
+    DeviceClass:
+      name: device_class
+      in: query
+      required: false
+      schema:
+        type: string
+    PathPrefix:
+      name: path_prefix
+      in: query
+      required: false
+      schema:
+        type: string
+    PathQuery:
+      name: path
+      in: query
+      required: true
+      schema:
+        type: string
+    DraftId:
+      name: draft_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Forbidden:
+      description: The requested operation is not allowed by proxy policy.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The resource changed or the requested state transition is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        ha_reachable:
+          type: boolean
+        version:
+          type: string
+        file_storage_ok:
+          type: boolean
+
+    CapabilitiesResponse:
+      type: object
+      required: [read_only_mode, allowed_read_globs, allowed_write_globs, allowed_ha_services, action_levels]
+      properties:
+        read_only_mode:
+          type: boolean
+        allowed_read_globs:
+          type: array
+          items:
+            type: string
+        allowed_write_globs:
+          type: array
+          items:
+            type: string
+        allowed_ha_services:
+          type: array
+          items:
+            type: string
+        action_levels:
+          type: object
+          additionalProperties:
+            type: string
+
+    HaConfig:
+      type: object
+      required: [location_name]
+      properties:
+        location_name:
+          type: string
+        time_zone:
+          type: string
+        unit_system:
+          type: object
+          additionalProperties: true
+        version:
+          type: string
+
+    EntitySummary:
+      type: object
+      required: [entity_id]
+      properties:
+        entity_id:
+          type: string
+        domain:
+          type: string
+        friendly_name:
+          type: string
+        state:
+          type: string
+
+    EntityState:
+      type: object
+      required: [entity_id, state, attributes, last_changed, last_updated]
+      properties:
+        entity_id:
+          type: string
+        state:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+        last_changed:
+          type: string
+          format: date-time
+        last_updated:
+          type: string
+          format: date-time
+
+    ServiceCallRequest:
+      type: object
+      required: [domain, service]
+      properties:
+        domain:
+          type: string
+        service:
+          type: string
+        target:
+          type: object
+          additionalProperties: true
+        service_data:
+          type: object
+          additionalProperties: true
+
+    ServiceCallResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        result:
+          type: object
+          additionalProperties: true
+
+    FileInfo:
+      type: object
+      required: [path, writable]
+      properties:
+        path:
+          type: string
+        writable:
+          type: boolean
+        size_bytes:
+          type: integer
+        content_hash:
+          type: string
+        modified_at:
+          type: string
+          format: date-time
+
+    FileContent:
+      type: object
+      required: [path, content, content_hash]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        content_hash:
+          type: string
+
+    FileSearchMatch:
+      type: object
+      required: [path, line, text]
+      properties:
+        path:
+          type: string
+        line:
+          type: integer
+        text:
+          type: string
+
+    CreateDraftRequest:
+      type: object
+      required: [target_path, operation_type, proposed_content, summary, reason]
+      properties:
+        target_path:
+          type: string
+        operation_type:
+          type: string
+          enum: [create, update, delete]
+        base_hash:
+          type: string
+        proposed_content:
+          type: string
+        summary:
+          type: string
+        reason:
+          type: string
+
+    Draft:
+      type: object
+      required: [id, target_path, operation_type, status, created_at, created_by]
+      properties:
+        id:
+          type: string
+        target_path:
+          type: string
+        operation_type:
+          type: string
+          enum: [create, update, delete]
+        base_hash:
+          type: string
+        proposed_content:
+          type: string
+        diff_text:
+          type: string
+        summary:
+          type: string
+        reason:
+          type: string
+        status:
+          $ref: "#/components/schemas/DraftStatus"
+        created_at:
+          type: string
+          format: date-time
+        validated_at:
+          type: string
+          format: date-time
+        applied_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+
+    DraftStatus:
+      type: string
+      enum: [draft, validated, ready_for_approval, applied, failed, rolled_back, superseded]
+
+    DraftDiff:
+      type: object
+      required: [draft_id, diff_text, summary]
+      properties:
+        draft_id:
+          type: string
+        diff_text:
+          type: string
+        summary:
+          type: string
+
+    ValidationResult:
+      type: object
+      required: [ok, checks]
+      properties:
+        ok:
+          type: boolean
+        yaml_valid:
+          type: boolean
+        path_allowed:
+          type: boolean
+        jinja_parse_status:
+          type: string
+          enum: [not_applicable, ok, warning, error]
+        estimated_reload_mode:
+          type: string
+          enum: [none, automations, scripts, quick_reload_all, restart_required]
+        warnings:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          items:
+            type: object
+            required: [name, ok]
+            properties:
+              name:
+                type: string
+              ok:
+                type: boolean
+              message:
+                type: string
+
+    RiskAssessment:
+      type: object
+      required: [risk_level, summary, expected_post_apply_action]
+      properties:
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        summary:
+          type: string
+        expected_post_apply_action:
+          type: string
+          enum: [none, reload, restart_required]
+        touches_existing_file:
+          type: boolean
+        requires_restart:
+          type: boolean
+        has_template_changes:
+          type: boolean
+        has_service_calls:
+          type: boolean
+
+    ConfirmedActionRequest:
+      type: object
+      required: [confirmed]
+      properties:
+        confirmed:
+          type: boolean
+          const: true
+        confirm:
+          type: boolean
+          deprecated: true
+        confirmation_text:
+          type: string
+        confirmation_note:
+          type: string
+        requested_by:
+          type: string
+
+    ApplyResult:
+      type: object
+      required: [ok, status, draft_id, validation, reload]
+      properties:
+        ok:
+          type: boolean
+        status:
+          type: string
+        draft_id:
+          type: string
+        backup_id:
+          type: string
+        backup_path:
+          type: string
+        reload_executed:
+          type: boolean
+        restart_required:
+          type: boolean
+        validation:
+          $ref: "#/components/schemas/ValidationResult"
+        validation_result:
+          $ref: "#/components/schemas/ValidationResult"
+        reload:
+          $ref: "#/components/schemas/ReloadResult"
+
+    RollbackResult:
+      type: object
+      required: [ok, draft_id]
+      properties:
+        ok:
+          type: boolean
+        draft_id:
+          type: string
+        restored_hash:
+          type: string
+        message:
+          type: string
+
+    ReloadResult:
+      type: object
+      required: [ok, action]
+      properties:
+        ok:
+          type: boolean
+        action:
+          type: string
+          enum: [none, automations, scripts, quick_reload_all, restart_required]
+        message:
+          type: string
+
+    ActionResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+
+    AuditLog:
+      type: object
+      required: [id, action_type, resource_type, result, created_at]
+      properties:
+        id:
+          type: string
+        action_type:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        request_summary:
+          type: string
+        result:
+          type: string
+        error_message:
+          type: string
+        actor:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        retryable:
+          type: boolean
