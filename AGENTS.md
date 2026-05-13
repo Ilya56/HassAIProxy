@@ -1,5 +1,11 @@
 # Agent Guide
 
+## Decision Rule
+
+Agents must ask the user before making any product, architecture, security, API, storage, deployment, dependency, or workflow decision.
+
+No assumptions and no hidden decisions. If a choice affects behavior, safety, scope, implementation direction, or future maintenance, present the decision to the user and wait for confirmation before proceeding.
+
 This repository contains the design and implementation work for a narrow Home Assistant proxy service intended to be used from a Custom GPT through GPT Actions.
 
 ## Project Context

@@ -6,7 +6,7 @@ The planned FastAPI project structure is:
 
 ```text
 ha-proxy/
-  app/
+  homeassistant_proxy/
     main.py
     config.py
     dependencies.py
@@ -129,4 +129,3 @@ Support:
 - `prod`
 
 At minimum, dev and prod must use separate API keys.
-
