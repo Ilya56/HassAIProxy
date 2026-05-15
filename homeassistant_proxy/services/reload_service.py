@@ -49,9 +49,10 @@ class ReloadService:
         service_name = _service_name_for_action(action)
         self._require_allowed_service(service_name)
         domain, service = service_name.split(".", 1)
+        timeout = self._settings.ha_reload_timeout_seconds if action == "quick_reload_all" else None
 
         try:
-            await self._ha_client.call_service(domain=domain, service=service)
+            await self._ha_client.call_service(domain=domain, service=service, timeout=timeout)
         except HomeAssistantClientError as exc:
             _raise_api_error(exc)
 

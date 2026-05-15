@@ -138,8 +138,9 @@ class HomeAssistantClient:
         domain: str,
         service: str,
         service_data: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> Any:
-        return await self._post_json(f"/api/services/{domain}/{service}", json=service_data or {})
+        return await self._post_json(f"/api/services/{domain}/{service}", json=service_data or {}, timeout=timeout)
 
     async def _get_json(self, path: str, *, not_found_code: str = "ha.not_found") -> Any:
         if not self._has_token:
@@ -185,7 +186,7 @@ class HomeAssistantClient:
 
         return response.json()
 
-    async def _post_json(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    async def _post_json(self, path: str, *, json: dict[str, Any] | None = None, timeout: float | None = None) -> Any:
         if not self._has_token:
             raise HomeAssistantClientError(
                 status_code=503,
@@ -195,7 +196,7 @@ class HomeAssistantClient:
             )
 
         try:
-            response = await self._client.post(path, json=json)
+            response = await self._client.post(path, json=json, timeout=timeout)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise HomeAssistantClientError(

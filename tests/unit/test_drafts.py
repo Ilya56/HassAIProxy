@@ -28,6 +28,7 @@ class FakeHomeAssistantClient:
         domain: str,
         service: str,
         service_data: dict[str, object] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, object]:
         self.called_services.append((domain, service))
         return {}
@@ -486,4 +487,3 @@ def test_readonly_mode_blocks_apply(monkeypatch, tmp_path) -> None:
     assert response.status_code == 403
     assert response.json()["code"] == "drafts.readonly_mode"
     get_settings.cache_clear()
-

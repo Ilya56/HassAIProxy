@@ -60,6 +60,7 @@ class Settings(BaseModel):
     )
     max_file_size_kb: int = 256
     request_timeout_seconds: float = 10.0
+    ha_reload_timeout_seconds: float = 60.0
 
     @field_validator("allowed_write_globs", "allowed_read_globs", "allowed_ha_services", mode="before")
     @classmethod
@@ -101,4 +102,5 @@ def get_settings() -> Settings:
         ),
         max_file_size_kb=int(_get_env("MAX_FILE_SIZE_KB", "256")),
         request_timeout_seconds=float(_get_env("REQUEST_TIMEOUT_SECONDS", "10")),
+        ha_reload_timeout_seconds=float(_get_env("HA_RELOAD_TIMEOUT_SECONDS", "60")),
     )

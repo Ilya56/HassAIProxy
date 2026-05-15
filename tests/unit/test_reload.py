@@ -9,6 +9,7 @@ from homeassistant_proxy.services.ha_client import HomeAssistantClientError
 class FakeHomeAssistantClient:
     def __init__(self) -> None:
         self.called_services: list[tuple[str, str]] = []
+        self.called_service_timeouts: list[float | None] = []
 
     async def ping(self) -> bool:
         return True
@@ -22,8 +23,10 @@ class FakeHomeAssistantClient:
         domain: str,
         service: str,
         service_data: dict[str, object] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, object]:
         self.called_services.append((domain, service))
+        self.called_service_timeouts.append(timeout)
         return {}
 
 
@@ -125,6 +128,7 @@ def test_reload_endpoints_require_confirmation_and_call_allowed_services(monkeyp
         ("script", "reload"),
         ("homeassistant", "reload_all"),
     ]
+    assert ha_client.called_service_timeouts == [None, None, 60.0]
     get_settings.cache_clear()
 
 
