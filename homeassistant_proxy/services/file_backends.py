@@ -120,6 +120,7 @@ class SftpFileBackend:
         self._port = settings.sftp_port
         self._username = settings.sftp_username
         self._private_key_path = settings.sftp_private_key_path
+        self._private_key_passphrase = settings.sftp_private_key_passphrase or None
         self._remote_root = _normalize_remote_root(settings.sftp_root)
         self._timeout = settings.request_timeout_seconds
 
@@ -217,6 +218,7 @@ class SftpFileBackend:
                 port=self._port,
                 username=self._username,
                 client_keys=[self._private_key_path],
+                passphrase=self._private_key_passphrase,
                 connect_timeout=self._timeout,
             ) as connection:
                 async with connection.start_sftp_client() as sftp:

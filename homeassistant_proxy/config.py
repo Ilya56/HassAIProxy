@@ -37,6 +37,7 @@ class Settings(BaseModel):
     sftp_port: int = 22
     sftp_username: str = "root"
     sftp_private_key_path: str = ""
+    sftp_private_key_passphrase: str = ""
     sftp_root: str = "/config"
     readonly_mode: bool = False
     allowed_write_globs: list[str] = Field(default_factory=lambda: ["/config/packages/ai/*.yaml"])
@@ -86,6 +87,7 @@ def get_settings() -> Settings:
         sftp_port=int(_get_env("SFTP_PORT", "22")),
         sftp_username=_get_env("SFTP_USERNAME", "root"),
         sftp_private_key_path=_get_env("SFTP_PRIVATE_KEY_PATH", ""),
+        sftp_private_key_passphrase=_get_env("SFTP_PRIVATE_KEY_PASSPHRASE", ""),
         sftp_root=_get_env("SFTP_ROOT", "/config"),
         readonly_mode=_parse_bool(_get_env("READONLY_MODE", "false")),
         allowed_write_globs=_get_env("ALLOWED_WRITE_GLOBS", "/config/packages/ai/*.yaml"),
