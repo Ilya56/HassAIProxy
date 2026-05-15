@@ -487,33 +487,3 @@ def test_readonly_mode_blocks_apply(monkeypatch, tmp_path) -> None:
     assert response.json()["code"] == "drafts.readonly_mode"
     get_settings.cache_clear()
 
-
-def test_apply_rejects_non_local_file_backend(monkeypatch, tmp_path) -> None:
-    (tmp_path / "config" / "packages" / "ai").mkdir(parents=True)
-    client = _client(monkeypatch, tmp_path)
-    create_response = client.post(
-        "/drafts/create",
-        headers=_auth_headers(),
-        json={
-            "target_path": "/config/packages/ai/co2.yaml",
-            "operation_type": "create",
-            "proposed_content": "automation: []\n",
-            "summary": "Add CO2 package",
-            "reason": "Prepare package.",
-        },
-    )
-    monkeypatch.setenv("FILE_BACKEND", "sftp")
-    monkeypatch.setenv("SFTP_HOST", "homeassistant.local")
-    monkeypatch.setenv("SFTP_PRIVATE_KEY_PATH", str(tmp_path / "key"))
-    get_settings.cache_clear()
-    sftp_client = TestClient(create_app())
-
-    response = sftp_client.post(
-        f"/drafts/{create_response.json()['id']}/apply",
-        headers=_auth_headers(),
-        json={"confirmed": True},
-    )
-
-    assert response.status_code == 501
-    assert response.json()["code"] == "files.write_backend_not_supported"
-    get_settings.cache_clear()

@@ -408,13 +408,6 @@ class DraftService:
                 message="Read-only mode blocks apply and rollback operations.",
                 retryable=False,
             )
-        if self._settings.file_backend != "local":
-            raise ApiError(
-                status_code=501,
-                code="files.write_backend_not_supported",
-                message="Only the local file backend supports apply and rollback operations in this stage.",
-                retryable=False,
-            )
 
     def _latest_file_version(self, draft_id: str) -> Row | None:
         with self._store.connect() as connection:
