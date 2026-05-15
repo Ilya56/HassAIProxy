@@ -10,13 +10,13 @@ As of the current codebase:
 - Apply and rollback are backend-independent and can use either the local or SFTP backend.
 - Apply performs local draft validation, writes the file, runs Home Assistant config check through
   `POST /api/config/core/check_config`, and performs quick reload when validation passes.
+- Audit records are written to SQLite and exposed through `/audit/logs` and `/audit/logs/{log_id}`.
 - `/ha/restart` is intentionally not implemented for v1; restart remains manual.
 - The test suite covers the implemented unit-level behavior.
 
 Still pending before connecting to ChatGPT:
 
 - real SFTP/Home Assistant integration smoke test on the target laptop environment;
-- public audit log API endpoints;
 - generated OpenAPI schema from the live FastAPI app;
 - Custom GPT Action setup;
 - Stage 7 hardening, including rate limiting, request size limits, structured request logging,

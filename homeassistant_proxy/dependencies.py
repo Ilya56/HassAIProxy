@@ -5,6 +5,8 @@ from fastapi import Depends
 
 from homeassistant_proxy.config import Settings, get_settings
 from homeassistant_proxy.core.auth import require_api_key
+from homeassistant_proxy.db.session import SqliteStore
+from homeassistant_proxy.services.audit_service import AuditService
 from homeassistant_proxy.services.draft_service import DraftService
 from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.ha_client import HomeAssistantClient
@@ -30,6 +32,13 @@ def get_file_service(settings: SettingsDep) -> FileService:
 
 
 FileServiceDep = Annotated[FileService, Depends(get_file_service)]
+
+
+def get_audit_service(settings: SettingsDep) -> AuditService:
+    return AuditService(SqliteStore(settings.sqlite_path))
+
+
+AuditServiceDep = Annotated[AuditService, Depends(get_audit_service)]
 
 
 def get_reload_service(settings: SettingsDep, ha_client: HaClientDep) -> ReloadService:

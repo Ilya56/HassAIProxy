@@ -166,6 +166,22 @@ class RollbackResult(BaseModel):
     message: str | None = None
 
 
+class AuditLog(BaseModel):
+    id: str
+    action_type: str
+    resource_type: str
+    result: str
+    created_at: str
+    resource_id: str | None = None
+    request_summary: str | None = None
+    error_message: str | None = None
+    actor: str | None = None
+
+
+class AuditLogListResponse(BaseModel):
+    logs: list[AuditLog]
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

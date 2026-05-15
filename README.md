@@ -19,6 +19,7 @@ Implemented:
 - SFTP file backend with read/list/stat/write/delete;
 - draft creation, diff preview, YAML validation, and base hash checks;
 - apply and rollback with backups and audit records in SQLite;
+- public audit log read endpoints;
 - Home Assistant config check through `POST /api/config/core/check_config`;
 - quick reload and selective automation/script reload endpoints;
 - post-apply config check and quick reload;
@@ -26,7 +27,6 @@ Implemented:
 
 Not implemented yet:
 
-- public audit log API endpoints;
 - generated/exported OpenAPI schema from the live app for GPT Actions;
 - Custom GPT Action configuration;
 - rate limiting and request body size limiting;
