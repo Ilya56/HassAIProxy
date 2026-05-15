@@ -87,8 +87,24 @@ class FileService:
             raise
         return True
 
+    async def write_writable_file(self, path: str, content: str) -> FileContent:
+        resolved = self._path_policy.resolve_write_path(path)
+        await self._backend.write_text(resolved.relative_path, content)
+        return FileContent(
+            path=resolved.api_path,
+            content=content,
+            content_hash=self._hash_content(content),
+        )
+
+    async def delete_writable_file(self, path: str) -> None:
+        resolved = self._path_policy.resolve_write_path(path)
+        await self._backend.delete_file(resolved.relative_path)
+
     def normalize_writable_path(self, path: str) -> str:
         return self._path_policy.resolve_write_path(path).api_path
+
+    def hash_content(self, content: str) -> str:
+        return self._hash_content(content)
 
     async def get_metadata_for_resolved(self, resolved: ResolvedFilePath) -> FileInfo:
         file_stat = await self._backend.stat(resolved.relative_path)

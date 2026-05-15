@@ -30,6 +30,10 @@ class FileBackend(Protocol):
 
     async def stat(self, relative_path: str) -> FileBackendStat: ...
 
+    async def write_text(self, relative_path: str, content: str) -> None: ...
+
+    async def delete_file(self, relative_path: str) -> None: ...
+
 
 class LocalFileBackend:
     def __init__(self, config_root: str) -> None:
@@ -53,6 +57,15 @@ class LocalFileBackend:
     async def read_text(self, relative_path: str) -> str:
         local_path = self._resolve_file(relative_path)
         return local_path.read_text(encoding="utf-8")
+
+    async def write_text(self, relative_path: str, content: str) -> None:
+        local_path = self._resolve_relative_path(relative_path, must_exist=False)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text(content, encoding="utf-8")
+
+    async def delete_file(self, relative_path: str) -> None:
+        local_path = self._resolve_file(relative_path)
+        local_path.unlink()
 
     async def stat(self, relative_path: str) -> FileBackendStat:
         local_path = self._resolve_file(relative_path)
@@ -123,6 +136,12 @@ class SftpFileBackend:
 
     async def read_text(self, relative_path: str) -> str:
         return await self._with_timeout(self._read_text(relative_path))
+
+    async def write_text(self, relative_path: str, content: str) -> None:
+        raise _write_not_supported()
+
+    async def delete_file(self, relative_path: str) -> None:
+        raise _write_not_supported()
 
     async def _read_text(self, relative_path: str) -> str:
         remote_path = self._remote_path(relative_path)
@@ -311,5 +330,14 @@ def _not_found() -> ApiError:
         status_code=404,
         code="files.not_found",
         message="The requested file was not found.",
+        retryable=False,
+    )
+
+
+def _write_not_supported() -> ApiError:
+    return ApiError(
+        status_code=501,
+        code="files.write_backend_not_supported",
+        message="The configured file backend does not support write operations yet.",
         retryable=False,
     )

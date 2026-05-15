@@ -22,6 +22,28 @@ CREATE TABLE IF NOT EXISTS drafts (
     applied_at TEXT,
     created_by TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS file_versions (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    content_hash TEXT,
+    backup_path TEXT,
+    previous_existed INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    related_draft_id TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT,
+    request_summary TEXT NOT NULL,
+    result TEXT NOT NULL,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    actor TEXT NOT NULL
+);
 """
 
 

@@ -30,6 +30,7 @@ class Settings(BaseModel):
     ha_base_url: str = "http://homeassistant.local:8123"
     ha_token: str = ""
     sqlite_path: str = "./data/homeassistant_proxy.sqlite3"
+    backup_root: str = "./data/backups"
     config_root: str = "/config"
     file_backend: FileBackend = "local"
     sftp_host: str = ""
@@ -79,6 +80,7 @@ def get_settings() -> Settings:
         ha_base_url=_get_env("HA_BASE_URL", "http://homeassistant.local:8123"),
         ha_token=_get_env("HA_TOKEN", ""),
         sqlite_path=_get_env("SQLITE_PATH", "./data/homeassistant_proxy.sqlite3"),
+        backup_root=_get_env("BACKUP_ROOT", "./data/backups"),
         config_root=_get_env("CONFIG_ROOT", "/config"),
         file_backend=_get_env("FILE_BACKEND", "local"),
         sftp_host=_get_env("SFTP_HOST", ""),

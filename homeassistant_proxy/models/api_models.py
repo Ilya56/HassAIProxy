@@ -134,6 +134,38 @@ class ValidationResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class ConfirmedActionRequest(BaseModel):
+    confirmed: Literal[True]
+    confirmation_text: str | None = None
+    confirmation_note: str | None = None
+    requested_by: str | None = None
+
+
+class ReloadResult(BaseModel):
+    ok: bool
+    action: Literal["none", "automations", "scripts", "quick_reload_all", "restart_required"]
+    message: str | None = None
+
+
+class ApplyResult(BaseModel):
+    ok: bool
+    status: str
+    draft_id: str
+    validation: ValidationResult
+    reload: ReloadResult
+    backup_id: str | None = None
+    backup_path: str | None = None
+    reload_executed: bool = False
+    restart_required: bool = False
+
+
+class RollbackResult(BaseModel):
+    ok: bool
+    draft_id: str
+    restored_hash: str | None = None
+    message: str | None = None
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

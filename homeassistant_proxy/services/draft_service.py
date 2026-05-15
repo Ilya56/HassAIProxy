@@ -7,7 +7,19 @@ from uuid import uuid4
 from homeassistant_proxy.config import Settings
 from homeassistant_proxy.core.errors import ApiError
 from homeassistant_proxy.db.session import SqliteStore
-from homeassistant_proxy.models.api_models import CreateDraftRequest, Draft, DraftDiff, ValidationCheck, ValidationResult
+from homeassistant_proxy.models.api_models import (
+    ApplyResult,
+    ConfirmedActionRequest,
+    CreateDraftRequest,
+    Draft,
+    DraftDiff,
+    ReloadResult,
+    RollbackResult,
+    ValidationCheck,
+    ValidationResult,
+)
+from homeassistant_proxy.services.audit_service import AuditService
+from homeassistant_proxy.services.backup_service import BackupService
 from homeassistant_proxy.services.diff_service import create_unified_diff
 from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.validation_service import DraftValidationService
@@ -19,6 +31,8 @@ class DraftService:
         self._file_service = file_service
         self._validation_service = DraftValidationService(settings)
         self._store = SqliteStore(settings.sqlite_path)
+        self._backup_service = BackupService(settings)
+        self._audit_service = AuditService(self._store)
 
     async def create_draft(self, request: CreateDraftRequest) -> Draft:
         if request.operation_type == "delete":
@@ -146,6 +160,176 @@ class DraftService:
                     validation.errors.append("The target file has changed since draft creation.")
         return validation
 
+    async def apply_draft(self, draft_id: str, request: ConfirmedActionRequest) -> ApplyResult:
+        self._require_writes_enabled()
+        draft = await self.get_draft(draft_id)
+        if draft.status != "ready_for_approval":
+            raise ApiError(
+                status_code=409,
+                code="drafts.invalid_status",
+                message="Only drafts ready for approval can be applied.",
+                retryable=False,
+                details={"draft_id": draft_id, "status": draft.status},
+            )
+
+        validation = await self.validate_draft(draft_id)
+        if not validation.ok:
+            self._record_audit(
+                action_type="apply_draft",
+                resource_id=draft_id,
+                request_summary=f"Apply draft for {draft.target_path}",
+                result="failed",
+                error_message="Draft validation failed before apply.",
+            )
+            raise ApiError(
+                status_code=409,
+                code="drafts.validation_failed",
+                message="Draft validation failed before apply.",
+                retryable=False,
+                details={"errors": validation.errors},
+            )
+
+        previous_existed = await self._file_service.writable_file_exists(draft.target_path)
+        if draft.operation_type == "create" and previous_existed:
+            raise ApiError(
+                status_code=409,
+                code="drafts.target_already_exists",
+                message="Create draft target already exists.",
+                retryable=False,
+                details={"path": draft.target_path},
+            )
+        if draft.operation_type == "update" and not previous_existed:
+            raise ApiError(
+                status_code=409,
+                code="drafts.target_missing",
+                message="Update draft target no longer exists.",
+                retryable=False,
+                details={"path": draft.target_path},
+            )
+
+        backup_id: str | None = None
+        internal_backup_path: str | None = None
+        previous_hash: str | None = None
+        if previous_existed:
+            current_file = await self._file_service.read_writable_file(draft.target_path)
+            previous_hash = current_file.content_hash
+            backup_id, internal_backup_path = self._backup_service.save_backup(
+                draft_id=draft_id,
+                target_path=draft.target_path,
+                content=current_file.content,
+            )
+        else:
+            backup_id = str(uuid4())
+
+        await self._file_service.write_writable_file(draft.target_path, draft.proposed_content or "")
+        post_validation = self._validation_service.validate_proposed_content(
+            target_path=draft.target_path,
+            proposed_content=draft.proposed_content or "",
+        )
+        applied_at = _now()
+        with self._store.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO file_versions (
+                    id, path, content_hash, backup_path, previous_existed, created_at, related_draft_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    backup_id,
+                    draft.target_path,
+                    previous_hash,
+                    internal_backup_path,
+                    1 if previous_existed else 0,
+                    applied_at,
+                    draft_id,
+                ),
+            )
+            connection.execute(
+                "UPDATE drafts SET status = ?, applied_at = ? WHERE id = ?",
+                ("applied", applied_at, draft_id),
+            )
+
+        self._record_audit(
+            action_type="apply_draft",
+            resource_id=draft_id,
+            request_summary=f"Apply draft for {draft.target_path}",
+            result="ok",
+            error_message=None,
+        )
+        return ApplyResult(
+            ok=True,
+            status="applied",
+            draft_id=draft_id,
+            backup_id=backup_id,
+            backup_path=None,
+            validation=post_validation,
+            reload=ReloadResult(
+                ok=True,
+                action="none",
+                message="Home Assistant reload is not implemented until Stage 5.",
+            ),
+            reload_executed=False,
+            restart_required=False,
+        )
+
+    async def rollback_draft(self, draft_id: str, request: ConfirmedActionRequest) -> RollbackResult:
+        self._require_writes_enabled()
+        draft = await self.get_draft(draft_id)
+        if draft.status != "applied":
+            raise ApiError(
+                status_code=409,
+                code="drafts.invalid_status",
+                message="Only applied drafts can be rolled back.",
+                retryable=False,
+                details={"draft_id": draft_id, "status": draft.status},
+            )
+
+        version = self._latest_file_version(draft_id)
+        if version is None:
+            raise ApiError(
+                status_code=409,
+                code="drafts.backup_not_found",
+                message="No backup record exists for this draft.",
+                retryable=False,
+                details={"draft_id": draft_id},
+            )
+
+        restored_hash: str | None = None
+        if bool(version["previous_existed"]):
+            backup_path = version["backup_path"]
+            if backup_path is None:
+                raise ApiError(
+                    status_code=409,
+                    code="drafts.backup_not_found",
+                    message="Backup content is missing for this draft.",
+                    retryable=False,
+                    details={"draft_id": draft_id},
+                )
+            backup_content = self._backup_service.read_backup(backup_path)
+            restored = await self._file_service.write_writable_file(draft.target_path, backup_content)
+            restored_hash = restored.content_hash
+            message = "Restored previous file content."
+        else:
+            if await self._file_service.writable_file_exists(draft.target_path):
+                await self._file_service.delete_writable_file(draft.target_path)
+            message = "Removed file created by draft."
+
+        with self._store.connect() as connection:
+            connection.execute(
+                "UPDATE drafts SET status = ? WHERE id = ?",
+                ("rolled_back", draft_id),
+            )
+
+        self._record_audit(
+            action_type="rollback_draft",
+            resource_id=draft_id,
+            request_summary=f"Rollback draft for {draft.target_path}",
+            result="ok",
+            error_message=None,
+        )
+        return RollbackResult(ok=True, draft_id=draft_id, restored_hash=restored_hash, message=message)
+
     def _raise_if_invalid(self, validation: ValidationResult) -> None:
         if not validation.ok:
             raise ApiError(
@@ -155,6 +339,54 @@ class DraftService:
                 retryable=False,
                 details={"errors": validation.errors},
             )
+
+    def _require_writes_enabled(self) -> None:
+        if self._settings.readonly_mode:
+            raise ApiError(
+                status_code=403,
+                code="drafts.readonly_mode",
+                message="Read-only mode blocks apply and rollback operations.",
+                retryable=False,
+            )
+        if self._settings.file_backend != "local":
+            raise ApiError(
+                status_code=501,
+                code="files.write_backend_not_supported",
+                message="Only the local file backend supports apply and rollback operations in this stage.",
+                retryable=False,
+            )
+
+    def _latest_file_version(self, draft_id: str) -> Row | None:
+        with self._store.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM file_versions
+                WHERE related_draft_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (draft_id,),
+            ).fetchone()
+
+    def _record_audit(
+        self,
+        *,
+        action_type: str,
+        resource_id: str,
+        request_summary: str,
+        result: str,
+        error_message: str | None,
+    ) -> None:
+        self._audit_service.record(
+            action_type=action_type,
+            resource_type="draft",
+            resource_id=resource_id,
+            request_summary=request_summary,
+            result=result,
+            error_message=error_message,
+            created_at=_now(),
+            actor=self._settings.actor_name,
+        )
 
 
 def _row_to_draft(row: Row) -> Draft:
