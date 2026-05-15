@@ -81,11 +81,20 @@ path they are given.
 Initial backend shape:
 
 - `local`: reads from a local filesystem `CONFIG_ROOT`.
-- `sftp`: reads from a remote SFTP root corresponding to Home Assistant `/config`.
+- `sftp`: reads from and writes to a remote SFTP root corresponding to Home Assistant `/config`.
 
 The SFTP backend is intended for development and deployments where Home Assistant OS is only
 reachable through Advanced SSH & Web Terminal. It should use key-based authentication with a
 dedicated proxy key. The selected Python SSH/SFTP dependency is `asyncssh`.
+
+Current SFTP write behavior:
+
+- writes only receive already policy-validated relative paths from the file service;
+- parent directories are created only under the configured SFTP root;
+- existing path components that are symbolic links are rejected;
+- file content is written to a non-hidden temporary file in the target directory;
+- the temporary file is renamed over the target using overwrite and atomic rename flags;
+- delete operations reject symbolic links and remove regular files only.
 
 ## Error Format
 
