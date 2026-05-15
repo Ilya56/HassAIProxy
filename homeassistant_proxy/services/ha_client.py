@@ -121,6 +121,26 @@ class HomeAssistantClient:
             )
         return data
 
+    async def check_config(self) -> dict[str, Any]:
+        data = await self._post_json("/api/config/core/check_config")
+        if not isinstance(data, dict):
+            raise HomeAssistantClientError(
+                status_code=502,
+                code="ha.invalid_response",
+                message="Home Assistant API returned an unexpected response.",
+                retryable=False,
+            )
+        return data
+
+    async def call_service(
+        self,
+        *,
+        domain: str,
+        service: str,
+        service_data: dict[str, Any] | None = None,
+    ) -> Any:
+        return await self._post_json(f"/api/services/{domain}/{service}", json=service_data or {})
+
     async def _get_json(self, path: str, *, not_found_code: str = "ha.not_found") -> Any:
         if not self._has_token:
             raise HomeAssistantClientError(
@@ -163,4 +183,43 @@ class HomeAssistantClient:
                 retryable=True,
             ) from exc
 
+        return response.json()
+
+    async def _post_json(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+        if not self._has_token:
+            raise HomeAssistantClientError(
+                status_code=503,
+                code="ha.token_not_configured",
+                message="Home Assistant token is not configured.",
+                retryable=False,
+            )
+
+        try:
+            response = await self._client.post(path, json=json)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HomeAssistantClientError(
+                status_code=502,
+                code="ha.request_failed",
+                message="Home Assistant API returned an error.",
+                retryable=exc.response.status_code >= 500,
+                details={"ha_status_code": exc.response.status_code},
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise HomeAssistantClientError(
+                status_code=504,
+                code="ha.request_timeout",
+                message="Home Assistant API request timed out.",
+                retryable=True,
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HomeAssistantClientError(
+                status_code=502,
+                code="ha.request_failed",
+                message="Home Assistant API request failed.",
+                retryable=True,
+            ) from exc
+
+        if response.content == b"":
+            return {}
         return response.json()

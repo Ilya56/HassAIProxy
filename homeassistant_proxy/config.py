@@ -54,7 +54,6 @@ class Settings(BaseModel):
         default_factory=lambda: [
             "automation.reload",
             "script.reload",
-            "homeassistant.check_config",
             "homeassistant.reload_all",
         ]
     )
@@ -96,7 +95,7 @@ def get_settings() -> Settings:
         ),
         allowed_ha_services=_get_env(
             "ALLOWED_HA_SERVICES",
-            "automation.reload,script.reload,homeassistant.check_config,homeassistant.reload_all",
+            "automation.reload,script.reload,homeassistant.reload_all",
         ),
         max_file_size_kb=int(_get_env("MAX_FILE_SIZE_KB", "256")),
         request_timeout_seconds=float(_get_env("REQUEST_TIMEOUT_SECONDS", "10")),

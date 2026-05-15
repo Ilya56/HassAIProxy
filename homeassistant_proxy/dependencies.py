@@ -8,6 +8,7 @@ from homeassistant_proxy.core.auth import require_api_key
 from homeassistant_proxy.services.draft_service import DraftService
 from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.ha_client import HomeAssistantClient
+from homeassistant_proxy.services.reload_service import ReloadService
 
 Authenticated = Annotated[None, Depends(require_api_key)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -31,8 +32,19 @@ def get_file_service(settings: SettingsDep) -> FileService:
 FileServiceDep = Annotated[FileService, Depends(get_file_service)]
 
 
-def get_draft_service(settings: SettingsDep, file_service: FileServiceDep) -> DraftService:
-    return DraftService(settings, file_service)
+def get_reload_service(settings: SettingsDep, ha_client: HaClientDep) -> ReloadService:
+    return ReloadService(settings, ha_client)
+
+
+ReloadServiceDep = Annotated[ReloadService, Depends(get_reload_service)]
+
+
+def get_draft_service(
+    settings: SettingsDep,
+    file_service: FileServiceDep,
+    reload_service: ReloadServiceDep,
+) -> DraftService:
+    return DraftService(settings, file_service, reload_service)
 
 
 DraftServiceDep = Annotated[DraftService, Depends(get_draft_service)]

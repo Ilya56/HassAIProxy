@@ -13,7 +13,6 @@ from homeassistant_proxy.models.api_models import (
     CreateDraftRequest,
     Draft,
     DraftDiff,
-    ReloadResult,
     RollbackResult,
     ValidationCheck,
     ValidationResult,
@@ -22,13 +21,15 @@ from homeassistant_proxy.services.audit_service import AuditService
 from homeassistant_proxy.services.backup_service import BackupService
 from homeassistant_proxy.services.diff_service import create_unified_diff
 from homeassistant_proxy.services.file_service import FileService
+from homeassistant_proxy.services.reload_service import ReloadService
 from homeassistant_proxy.services.validation_service import DraftValidationService
 
 
 class DraftService:
-    def __init__(self, settings: Settings, file_service: FileService) -> None:
+    def __init__(self, settings: Settings, file_service: FileService, reload_service: ReloadService) -> None:
         self._settings = settings
         self._file_service = file_service
+        self._reload_service = reload_service
         self._validation_service = DraftValidationService(settings)
         self._store = SqliteStore(settings.sqlite_path)
         self._backup_service = BackupService(settings)
@@ -245,6 +246,69 @@ class DraftService:
                     draft_id,
                 ),
             )
+
+        if not post_validation.ok:
+            self._mark_draft_failed(draft_id)
+            self._record_audit(
+                action_type="apply_draft",
+                resource_id=draft_id,
+                request_summary=f"Apply draft for {draft.target_path}",
+                result="failed",
+                error_message="Draft validation failed after write.",
+            )
+            raise ApiError(
+                status_code=409,
+                code="drafts.post_write_validation_failed",
+                message="Draft validation failed after write. The backup is available for rollback.",
+                retryable=False,
+                details={"draft_id": draft_id, "backup_id": backup_id, "errors": post_validation.errors},
+            )
+
+        try:
+            ha_validation = await self._reload_service.check_config()
+        except ApiError as exc:
+            self._mark_draft_failed(draft_id)
+            self._record_audit(
+                action_type="apply_draft",
+                resource_id=draft_id,
+                request_summary=f"Apply draft for {draft.target_path}",
+                result="failed",
+                error_message="Home Assistant configuration check failed to run after write.",
+            )
+            raise
+
+        post_validation = _merge_validation_results(post_validation, ha_validation)
+        if not post_validation.ok:
+            self._mark_draft_failed(draft_id)
+            self._record_audit(
+                action_type="apply_draft",
+                resource_id=draft_id,
+                request_summary=f"Apply draft for {draft.target_path}",
+                result="failed",
+                error_message="Home Assistant configuration check failed after write.",
+            )
+            raise ApiError(
+                status_code=409,
+                code="drafts.ha_config_check_failed",
+                message="Home Assistant configuration check failed after write. The backup is available for rollback.",
+                retryable=False,
+                details={"draft_id": draft_id, "backup_id": backup_id, "errors": post_validation.errors},
+            )
+
+        try:
+            reload_result = await self._reload_service.reload_after_apply(post_validation)
+        except ApiError as exc:
+            self._mark_draft_failed(draft_id)
+            self._record_audit(
+                action_type="apply_draft",
+                resource_id=draft_id,
+                request_summary=f"Apply draft for {draft.target_path}",
+                result="failed",
+                error_message="Home Assistant reload failed after write.",
+            )
+            raise
+
+        with self._store.connect() as connection:
             connection.execute(
                 "UPDATE drafts SET status = ?, applied_at = ? WHERE id = ?",
                 ("applied", applied_at, draft_id),
@@ -264,23 +328,19 @@ class DraftService:
             backup_id=backup_id,
             backup_path=None,
             validation=post_validation,
-            reload=ReloadResult(
-                ok=True,
-                action="none",
-                message="Home Assistant reload is not implemented until Stage 5.",
-            ),
-            reload_executed=False,
-            restart_required=False,
+            reload=reload_result,
+            reload_executed=reload_result.ok and reload_result.action not in {"none", "restart_required"},
+            restart_required=reload_result.action == "restart_required",
         )
 
     async def rollback_draft(self, draft_id: str, request: ConfirmedActionRequest) -> RollbackResult:
         self._require_writes_enabled()
         draft = await self.get_draft(draft_id)
-        if draft.status != "applied":
+        if draft.status not in {"applied", "failed"}:
             raise ApiError(
                 status_code=409,
                 code="drafts.invalid_status",
-                message="Only applied drafts can be rolled back.",
+                message="Only applied or failed drafts can be rolled back.",
                 retryable=False,
                 details={"draft_id": draft_id, "status": draft.status},
             )
@@ -368,6 +428,13 @@ class DraftService:
                 (draft_id,),
             ).fetchone()
 
+    def _mark_draft_failed(self, draft_id: str) -> None:
+        with self._store.connect() as connection:
+            connection.execute(
+                "UPDATE drafts SET status = ? WHERE id = ?",
+                ("failed", draft_id),
+            )
+
     def _record_audit(
         self,
         *,
@@ -409,6 +476,19 @@ def _row_to_draft(row: Row) -> Draft:
 
 def _now() -> str:
     return datetime.now(tz=UTC).isoformat()
+
+
+def _merge_validation_results(primary: ValidationResult, secondary: ValidationResult) -> ValidationResult:
+    return ValidationResult(
+        ok=primary.ok and secondary.ok,
+        yaml_valid=primary.yaml_valid,
+        path_allowed=primary.path_allowed,
+        jinja_parse_status=primary.jinja_parse_status,
+        estimated_reload_mode=primary.estimated_reload_mode if primary.ok and secondary.ok else "none",
+        warnings=[*primary.warnings, *secondary.warnings],
+        errors=[*primary.errors, *secondary.errors],
+        checks=[*primary.checks, *secondary.checks],
+    )
 
 
 def _not_found(draft_id: str) -> ApiError:
