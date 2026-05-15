@@ -5,6 +5,7 @@ from fastapi import Depends
 
 from homeassistant_proxy.config import Settings, get_settings
 from homeassistant_proxy.core.auth import require_api_key
+from homeassistant_proxy.services.draft_service import DraftService
 from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.ha_client import HomeAssistantClient
 
@@ -28,3 +29,10 @@ def get_file_service(settings: SettingsDep) -> FileService:
 
 
 FileServiceDep = Annotated[FileService, Depends(get_file_service)]
+
+
+def get_draft_service(settings: SettingsDep, file_service: FileServiceDep) -> DraftService:
+    return DraftService(settings, file_service)
+
+
+DraftServiceDep = Annotated[DraftService, Depends(get_draft_service)]

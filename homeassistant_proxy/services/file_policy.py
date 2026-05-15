@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
+import re
 
 from homeassistant_proxy.config import Settings
 from homeassistant_proxy.core.errors import ApiError
@@ -100,12 +100,16 @@ class FilePathPolicy:
     def matches_write(self, api_path: str) -> bool:
         return self._matches_any(api_path, self._allowed_write_globs)
 
+    def matches_glob(self, api_path: str, pattern: str) -> bool:
+        normalized_pattern = self.normalize_api_path(pattern)
+        return re.fullmatch(_glob_to_regex(normalized_pattern), api_path) is not None
+
     def _to_resolved_path(self, api_path: str) -> ResolvedFilePath:
         relative_path = api_path.removeprefix(f"{CONFIG_PREFIX}/")
         return ResolvedFilePath(api_path=api_path, relative_path=relative_path)
 
     def _matches_any(self, api_path: str, globs: list[str]) -> bool:
-        return any(fnmatchcase(api_path, self.normalize_api_path(pattern)) for pattern in globs)
+        return any(self.matches_glob(api_path, pattern) for pattern in globs)
 
     def _forbidden_path(self) -> ApiError:
         return ApiError(
@@ -122,3 +126,24 @@ class FilePathPolicy:
             message="The requested path escapes the configured Home Assistant config root.",
             retryable=False,
         )
+
+
+def _glob_to_regex(pattern: str) -> str:
+    regex = []
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "*":
+            if index + 1 < len(pattern) and pattern[index + 1] == "*":
+                regex.append(".*")
+                index += 2
+            else:
+                regex.append("[^/]*")
+                index += 1
+        elif char == "?":
+            regex.append("[^/]")
+            index += 1
+        else:
+            regex.append(re.escape(char))
+            index += 1
+    return "".join(regex)

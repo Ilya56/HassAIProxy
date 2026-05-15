@@ -26,6 +26,7 @@ class Settings(BaseModel):
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     app_api_key: str = Field(default="dev-only-change-me", min_length=1)
+    actor_name: str = Field(default="owner", min_length=1)
     ha_base_url: str = "http://homeassistant.local:8123"
     ha_token: str = ""
     sqlite_path: str = "./data/homeassistant_proxy.sqlite3"
@@ -74,6 +75,7 @@ def get_settings() -> Settings:
         app_host=_get_env("APP_HOST", "127.0.0.1"),
         app_port=int(_get_env("APP_PORT", "8000")),
         app_api_key=_get_env("APP_API_KEY", "dev-only-change-me"),
+        actor_name=_get_env("ACTOR_NAME", "owner"),
         ha_base_url=_get_env("HA_BASE_URL", "http://homeassistant.local:8123"),
         ha_token=_get_env("HA_TOKEN", ""),
         sqlite_path=_get_env("SQLITE_PATH", "./data/homeassistant_proxy.sqlite3"),

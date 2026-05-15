@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from fnmatch import fnmatchcase
 from hashlib import sha256
 
 from homeassistant_proxy.config import Settings
@@ -57,6 +56,39 @@ class FileService:
     async def get_metadata(self, path: str) -> FileInfo:
         resolved = self._path_policy.resolve_read_path(path)
         return await self.get_metadata_for_resolved(resolved)
+
+    async def read_writable_file(self, path: str) -> FileContent:
+        resolved = self._path_policy.resolve_write_path(path)
+        file_stat = await self._backend.stat(resolved.relative_path)
+
+        if file_stat.size_bytes > self._max_file_size_bytes:
+            raise ApiError(
+                status_code=413,
+                code="files.file_too_large",
+                message="The requested file exceeds the configured maximum file size.",
+                retryable=False,
+                details={"path": resolved.api_path, "max_file_size_bytes": self._max_file_size_bytes},
+            )
+
+        content = await self._backend.read_text(resolved.relative_path)
+        return FileContent(
+            path=resolved.api_path,
+            content=content,
+            content_hash=self._hash_content(content),
+        )
+
+    async def writable_file_exists(self, path: str) -> bool:
+        resolved = self._path_policy.resolve_write_path(path)
+        try:
+            await self._backend.stat(resolved.relative_path)
+        except ApiError as exc:
+            if exc.code == "files.not_found":
+                return False
+            raise
+        return True
+
+    def normalize_writable_path(self, path: str) -> str:
+        return self._path_policy.resolve_write_path(path).api_path
 
     async def get_metadata_for_resolved(self, resolved: ResolvedFilePath) -> FileInfo:
         file_stat = await self._backend.stat(resolved.relative_path)
@@ -124,7 +156,7 @@ class FileService:
         matches: list[str] = []
         for relative_path in await self._backend.list_files(base_resolved):
             api_path = self._path_policy.relative_to_api_path(relative_path)
-            if fnmatchcase(api_path, normalized_glob):
+            if self._path_policy.matches_glob(api_path, normalized_glob):
                 matches.append(api_path)
         return matches
 

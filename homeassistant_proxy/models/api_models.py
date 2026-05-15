@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -76,6 +78,60 @@ class FileSearchMatch(BaseModel):
 
 class FileSearchResponse(BaseModel):
     matches: list[FileSearchMatch]
+
+
+DraftOperationType = Literal["create", "update", "delete"]
+DraftStatus = Literal["draft", "validated", "ready_for_approval", "applied", "failed", "rolled_back", "superseded"]
+JinjaParseStatus = Literal["not_applicable", "ok", "warning", "error"]
+EstimatedReloadMode = Literal["none", "automations", "scripts", "quick_reload_all", "restart_required"]
+
+
+class CreateDraftRequest(BaseModel):
+    target_path: str
+    operation_type: DraftOperationType
+    base_hash: str | None = None
+    proposed_content: str
+    summary: str
+    reason: str
+
+
+class Draft(BaseModel):
+    id: str
+    target_path: str
+    operation_type: DraftOperationType
+    status: DraftStatus
+    created_at: str
+    created_by: str
+    base_hash: str | None = None
+    proposed_content: str | None = None
+    diff_text: str | None = None
+    summary: str | None = None
+    reason: str | None = None
+    validated_at: str | None = None
+    applied_at: str | None = None
+
+
+class DraftDiff(BaseModel):
+    draft_id: str
+    diff_text: str
+    summary: str
+
+
+class ValidationCheck(BaseModel):
+    name: str
+    ok: bool
+    message: str | None = None
+
+
+class ValidationResult(BaseModel):
+    ok: bool
+    checks: list[ValidationCheck]
+    yaml_valid: bool | None = None
+    path_allowed: bool | None = None
+    jinja_parse_status: JinjaParseStatus | None = None
+    estimated_reload_mode: EstimatedReloadMode | None = None
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):
