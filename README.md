@@ -11,6 +11,9 @@ The codebase is currently through Stage 5 for the core proxy workflow, with SFTP
 Implemented:
 
 - FastAPI application skeleton and Bearer API key authentication;
+- Dockerfile and Docker Compose deployment for Windows Docker Desktop;
+- mounted secret-file configuration for Docker deployments;
+- Cloudflare Tunnel container wiring for a public Custom GPT Actions hostname;
 - `/health` and `/capabilities`;
 - Home Assistant read endpoints for config, entities, automations, and scripts;
 - file list/read/search/metadata endpoints with `/config/...` API paths;
@@ -27,11 +30,8 @@ Implemented:
 
 Not implemented yet:
 
-- generated/exported OpenAPI schema from the live app for GPT Actions;
-- Custom GPT Action configuration;
 - rate limiting and request body size limiting;
 - structured request logging and secret redaction;
-- production deployment docs and token/key revocation runbook;
 - real integration smoke tests against the laptop/Home Assistant/SFTP environment.
 
 Intentional v1 decision:
@@ -56,6 +56,25 @@ Run the app:
 
 ```powershell
 uv run uvicorn homeassistant_proxy.main:create_app --factory --reload
+```
+
+## Docker + Custom GPT Deployment
+
+Start with:
+
+- `docs/deployment_docker_cloudflare.md`
+- `docs/custom_gpt_setup.md`
+- `docs/custom_gpt_instructions.md`
+- `docs/gpt_action_openapi.json`
+
+The Docker deployment uses the SFTP backend and mounted secret files. Local file access is kept for tests and development.
+
+Export the GPT Action schema for your real public URL:
+
+```powershell
+uv run python scripts\export_openapi.py `
+  --server-url https://ha-gpt.example.com `
+  --output docs\gpt_action_openapi.json
 ```
 
 ## Documentation

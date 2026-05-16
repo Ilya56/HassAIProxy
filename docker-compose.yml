@@ -1,0 +1,59 @@
+services:
+  ha-proxy:
+    build:
+      context: .
+    image: homeassistant-gpt-proxy:local
+    restart: unless-stopped
+    env_file:
+      - path: ./.env.docker
+        required: false
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      APP_API_KEY_FILE: /run/secrets/app_api_key
+      HA_TOKEN_FILE: /run/secrets/ha_token
+      SFTP_PRIVATE_KEY_PATH: /run/secrets/sftp_private_key
+      SFTP_PRIVATE_KEY_PASSPHRASE_FILE: /run/secrets/sftp_private_key_passphrase
+      SQLITE_PATH: /app/data/homeassistant_proxy.sqlite3
+      BACKUP_ROOT: /app/data/backups
+      FILE_BACKEND: sftp
+    secrets:
+      - app_api_key
+      - ha_token
+      - sftp_private_key
+      - sftp_private_key_passphrase
+    volumes:
+      - proxy_data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - proxy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - ha-proxy
+    command: tunnel --no-autoupdate run --token-file /run/secrets/cloudflare_tunnel_token
+    secrets:
+      - cloudflare_tunnel_token
+    networks:
+      - proxy
+
+secrets:
+  app_api_key:
+    file: ./.secrets/app_api_key.txt
+  ha_token:
+    file: ./.secrets/ha_token.txt
+  sftp_private_key:
+    file: ./.secrets/ha_proxy_sftp_key
+  sftp_private_key_passphrase:
+    file: ./.secrets/sftp_private_key_passphrase.txt
+  cloudflare_tunnel_token:
+    file: ./.secrets/cloudflare_tunnel_token.txt
+
+volumes:
+  proxy_data:
+
+networks:
+  proxy:

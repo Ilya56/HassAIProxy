@@ -1,0 +1,13 @@
+.git
+.idea
+.pytest_cache
+.secrets
+.uv-cache
+.venv
+data
+tests
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.docker.example
