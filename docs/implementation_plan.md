@@ -17,8 +17,7 @@ As of the current codebase:
 Still pending before connecting to ChatGPT:
 
 - real SFTP/Home Assistant integration smoke test on the target laptop environment;
-- generated OpenAPI schema from the live FastAPI app;
-- Custom GPT Action setup;
+- importing the generated OpenAPI schema into the Custom GPT editor and testing real actions;
 - Stage 7 hardening, including rate limiting, request size limits, structured request logging,
   secret redaction, and operational token/key revocation docs.
 
