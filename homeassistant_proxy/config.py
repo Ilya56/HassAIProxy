@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -11,6 +12,15 @@ FileBackend = Literal["local", "sftp"]
 
 def _get_env(name: str, default: str) -> str:
     return os.environ.get(name, default)
+
+
+def _get_secret_env(name: str, default: str = "") -> str:
+    file_value = os.environ.get(f"{name}_FILE", "").strip()
+    if not file_value:
+        return _get_env(name, default)
+
+    secret_path = Path(file_value)
+    return secret_path.read_text(encoding="utf-8").strip()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -76,10 +86,10 @@ def get_settings() -> Settings:
         app_env=_get_env("APP_ENV", "dev"),
         app_host=_get_env("APP_HOST", "127.0.0.1"),
         app_port=int(_get_env("APP_PORT", "8000")),
-        app_api_key=_get_env("APP_API_KEY", "dev-only-change-me"),
+        app_api_key=_get_secret_env("APP_API_KEY", "dev-only-change-me"),
         actor_name=_get_env("ACTOR_NAME", "owner"),
         ha_base_url=_get_env("HA_BASE_URL", "http://homeassistant.local:8123"),
-        ha_token=_get_env("HA_TOKEN", ""),
+        ha_token=_get_secret_env("HA_TOKEN", ""),
         sqlite_path=_get_env("SQLITE_PATH", "./data/homeassistant_proxy.sqlite3"),
         backup_root=_get_env("BACKUP_ROOT", "./data/backups"),
         config_root=_get_env("CONFIG_ROOT", "/config"),
@@ -88,7 +98,7 @@ def get_settings() -> Settings:
         sftp_port=int(_get_env("SFTP_PORT", "22")),
         sftp_username=_get_env("SFTP_USERNAME", "root"),
         sftp_private_key_path=_get_env("SFTP_PRIVATE_KEY_PATH", ""),
-        sftp_private_key_passphrase=_get_env("SFTP_PRIVATE_KEY_PASSPHRASE", ""),
+        sftp_private_key_passphrase=_get_secret_env("SFTP_PRIVATE_KEY_PASSPHRASE", ""),
         sftp_root=_get_env("SFTP_ROOT", "/config"),
         readonly_mode=_parse_bool(_get_env("READONLY_MODE", "false")),
         allowed_write_globs=_get_env("ALLOWED_WRITE_GLOBS", "/config/packages/ai/*.yaml"),
