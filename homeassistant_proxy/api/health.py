@@ -1,19 +1,19 @@
-from pathlib import Path
-
 from fastapi import APIRouter
 
+from homeassistant_proxy.core.errors import ApiError
 from homeassistant_proxy.dependencies import Authenticated, HaClientDep, SettingsDep
 from homeassistant_proxy.models.api_models import HealthResponse
+from homeassistant_proxy.services.file_service import FileService
 
 router = APIRouter(tags=["Health"])
 
 
 @router.get("/health", response_model=HealthResponse, operation_id="getHealth")
 async def get_health(_: Authenticated, settings: SettingsDep, ha_client: HaClientDep) -> HealthResponse:
-    file_storage_ok = bool(settings.sftp_host and settings.sftp_private_key_path)
-    if settings.file_backend == "local":
-        config_root = Path(settings.config_root)
-        file_storage_ok = config_root.exists()
+    try:
+        file_storage_ok = await FileService(settings).check_storage()
+    except ApiError:
+        file_storage_ok = False
 
     ha_reachable = await ha_client.ping()
     return HealthResponse(

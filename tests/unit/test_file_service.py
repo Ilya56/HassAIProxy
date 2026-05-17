@@ -33,6 +33,9 @@ class MemoryFileBackend:
         self.stat_paths.append(relative_path)
         return FileBackendStat(size_bytes=15, modified_at=datetime(2026, 5, 13, tzinfo=UTC))
 
+    async def check_access(self) -> None:
+        return None
+
 
 class FakeSftpAttrs:
     def __init__(self, permissions: int, size: int = 0, mtime: float = 1_778_688_000.0) -> None:
@@ -196,6 +199,67 @@ def test_sftp_backend_passes_key_passphrase_to_asyncssh(monkeypatch) -> None:
     asyncio.run(use_client())
 
     assert captured_kwargs["passphrase"] == "test-passphrase"
+
+
+def test_sftp_backend_reports_connect_error_details(monkeypatch) -> None:
+    def fake_connect(*args: object, **kwargs: object) -> object:
+        raise OSError("debug failure")
+
+    monkeypatch.setattr("homeassistant_proxy.services.file_backends.asyncssh.connect", fake_connect)
+    backend = SftpFileBackend(
+        Settings(
+            file_backend="sftp",
+            sftp_host="homeassistant.local",
+            sftp_private_key_path="./secrets/ha_proxy_sftp_key",
+        )
+    )
+
+    async def use_client() -> None:
+        async with backend._sftp_client():
+            pass
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(use_client())
+
+    assert exc_info.value.code == "files.remote_transport_error"
+    assert exc_info.value.details == {
+        "backend": "sftp",
+        "error_type": "OSError",
+        "operation": "connect",
+    }
+
+
+def test_sftp_backend_check_access_verifies_remote_root() -> None:
+    fake_sftp = FakeSftpClient()
+    backend = FakeableSftpFileBackend(fake_sftp)
+
+    asyncio.run(backend.check_access())
+
+
+def test_sftp_backend_check_access_rejects_missing_remote_root() -> None:
+    fake_sftp = FakeSftpClient()
+    fake_sftp.dirs.clear()
+    backend = FakeableSftpFileBackend(fake_sftp)
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(backend.check_access())
+
+    assert exc_info.value.code == "files.not_found"
+
+
+def test_file_service_check_storage_returns_false_on_backend_error() -> None:
+    class BrokenBackend(MemoryFileBackend):
+        async def check_access(self) -> None:
+            raise ApiError(
+                status_code=502,
+                code="files.remote_transport_error",
+                message="Remote file transport failed.",
+                retryable=True,
+            )
+
+    service = FileService(Settings(), backend=BrokenBackend())
+
+    assert asyncio.run(service.check_storage()) is False
 
 
 def test_sftp_backend_requires_host() -> None:

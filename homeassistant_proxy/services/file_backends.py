@@ -32,6 +32,8 @@ class FileBackend(Protocol):
 
     async def stat(self, relative_path: str) -> FileBackendStat: ...
 
+    async def check_access(self) -> None: ...
+
     async def write_text(self, relative_path: str, content: str) -> None: ...
 
     async def delete_file(self, relative_path: str) -> None: ...
@@ -76,6 +78,10 @@ class LocalFileBackend:
             size_bytes=file_stat.st_size,
             modified_at=datetime.fromtimestamp(file_stat.st_mtime, tz=UTC),
         )
+
+    async def check_access(self) -> None:
+        if not self._config_root.exists() or not self._config_root.is_dir():
+            raise _not_found()
 
     def _resolve_dir(self, relative_dir: str) -> Path:
         return self._resolve_relative_path(relative_dir, must_exist=False)
@@ -125,7 +131,7 @@ class SftpFileBackend:
         self._timeout = settings.request_timeout_seconds
 
     async def list_files(self, relative_dir: str) -> list[str]:
-        return await self._with_timeout(self._list_files(relative_dir))
+        return await self._with_timeout(self._list_files(relative_dir), operation="list_files")
 
     async def _list_files(self, relative_dir: str) -> list[str]:
         remote_dir = self._remote_path(relative_dir)
@@ -134,17 +140,19 @@ class SftpFileBackend:
                 return await self._list_files_recursive(sftp, remote_dir, relative_dir.strip("/"))
             except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath, asyncssh.SFTPNotADirectory):
                 return []
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="list_files") from exc
 
     async def read_text(self, relative_path: str) -> str:
-        return await self._with_timeout(self._read_text(relative_path))
+        return await self._with_timeout(self._read_text(relative_path), operation="read_text")
 
     async def write_text(self, relative_path: str, content: str) -> None:
-        await self._with_timeout(self._write_text(relative_path, content))
+        await self._with_timeout(self._write_text(relative_path, content), operation="write_text")
 
     async def delete_file(self, relative_path: str) -> None:
-        await self._with_timeout(self._delete_file(relative_path))
+        await self._with_timeout(self._delete_file(relative_path), operation="delete_file")
 
     async def _read_text(self, relative_path: str) -> str:
         remote_path = self._remote_path(relative_path)
@@ -155,8 +163,10 @@ class SftpFileBackend:
                     content = await remote_file.read()
             except asyncssh.SFTPNoSuchFile as exc:
                 raise _not_found() from exc
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="read_text") from exc
 
         return content.decode("utf-8")
 
@@ -175,8 +185,10 @@ class SftpFileBackend:
                 await self._assert_safe_remote_file(sftp, temp_remote_path)
                 await sftp.rename(temp_remote_path, remote_path, FXR_OVERWRITE | FXR_ATOMIC)
                 await self._ensure_safe_remote_dir(sftp, parent_relative)
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="write_text") from exc
             finally:
                 await self._remove_temp_file_if_present(sftp, temp_remote_path, parent_remote)
 
@@ -188,11 +200,42 @@ class SftpFileBackend:
                 await sftp.remove(remote_path)
             except asyncssh.SFTPNoSuchFile as exc:
                 raise _not_found() from exc
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="delete_file") from exc
 
     async def stat(self, relative_path: str) -> FileBackendStat:
-        return await self._with_timeout(self._stat(relative_path))
+        return await self._with_timeout(self._stat(relative_path), operation="stat")
+
+    async def check_access(self) -> None:
+        await self._with_timeout(self._check_access(), operation="check_access")
+
+    async def _check_access(self) -> None:
+        async with self._sftp_client() as sftp:
+            try:
+                attrs = await sftp.lstat(self._remote_root)
+            except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
+                raise _not_found() from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="check_access") from exc
+
+            permissions = attrs.permissions or 0
+            if stat.S_ISLNK(permissions):
+                raise _forbidden_path_escape()
+            if not stat.S_ISDIR(permissions):
+                raise _not_found()
+
+            try:
+                real_root = await sftp.realpath(self._remote_root)
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="check_access") from exc
+            if PurePosixPath(real_root).as_posix() != PurePosixPath(self._remote_root).as_posix():
+                raise _forbidden_path_escape()
 
     async def _stat(self, relative_path: str) -> FileBackendStat:
         remote_path = self._remote_path(relative_path)
@@ -202,8 +245,10 @@ class SftpFileBackend:
                 attrs = await sftp.stat(remote_path)
             except asyncssh.SFTPNoSuchFile as exc:
                 raise _not_found() from exc
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="stat") from exc
 
         return FileBackendStat(
             size_bytes=int(attrs.size or 0),
@@ -223,8 +268,10 @@ class SftpFileBackend:
             ) as connection:
                 async with connection.start_sftp_client() as sftp:
                     yield sftp
-        except asyncssh.Error as exc:
-            raise _transport_error(exc) from exc
+        except ApiError:
+            raise
+        except Exception as exc:
+            raise _transport_error(exc, operation="connect") from exc
 
     async def _list_files_recursive(
         self,
@@ -257,8 +304,10 @@ class SftpFileBackend:
             attrs = await sftp.lstat(remote_path)
         except asyncssh.SFTPNoSuchFile as exc:
             raise _not_found() from exc
-        except asyncssh.Error as exc:
-            raise _transport_error(exc) from exc
+        except ApiError:
+            raise
+        except Exception as exc:
+            raise _transport_error(exc, operation="assert_safe_remote_file") from exc
 
         permissions = attrs.permissions or 0
         if stat.S_ISLNK(permissions):
@@ -269,8 +318,10 @@ class SftpFileBackend:
         try:
             real_path = await sftp.realpath(remote_path)
             real_root = await sftp.realpath(self._remote_root)
-        except asyncssh.Error as exc:
-            raise _transport_error(exc) from exc
+        except ApiError:
+            raise
+        except Exception as exc:
+            raise _transport_error(exc, operation="assert_safe_remote_file") from exc
         if not _remote_path_is_under(real_path, real_root):
             raise _forbidden_path_escape()
 
@@ -295,9 +346,11 @@ class SftpFileBackend:
                     await sftp.mkdir(current_remote)
                     attrs = await sftp.lstat(current_remote)
                 except asyncssh.Error as exc:
-                    raise _transport_error(exc) from exc
-            except asyncssh.Error as exc:
-                raise _transport_error(exc) from exc
+                    raise _transport_error(exc, operation="ensure_safe_remote_dir") from exc
+            except ApiError:
+                raise
+            except Exception as exc:
+                raise _transport_error(exc, operation="ensure_safe_remote_dir") from exc
 
             permissions = attrs.permissions or 0
             if stat.S_ISLNK(permissions):
@@ -309,8 +362,10 @@ class SftpFileBackend:
         try:
             real_path = await sftp.realpath(remote_dir)
             real_root = await sftp.realpath(self._remote_root)
-        except asyncssh.Error as exc:
-            raise _transport_error(exc) from exc
+        except ApiError:
+            raise
+        except Exception as exc:
+            raise _transport_error(exc, operation="ensure_safe_remote_dir") from exc
         if not _remote_path_is_under(real_path, real_root):
             raise _forbidden_path_escape()
 
@@ -342,15 +397,16 @@ class SftpFileBackend:
             return self._remote_root
         return f"{self._remote_root.rstrip('/')}/{'/'.join(parts)}"
 
-    async def _with_timeout(self, operation: Awaitable[T]) -> T:
+    async def _with_timeout(self, awaitable: Awaitable[T], *, operation: str) -> T:
         try:
-            return await asyncio.wait_for(operation, timeout=self._timeout)
+            return await asyncio.wait_for(awaitable, timeout=self._timeout)
         except TimeoutError as exc:
             raise ApiError(
                 status_code=504,
                 code="files.remote_transport_timeout",
                 message="Remote file transport timed out.",
                 retryable=True,
+                details=_transport_details(exc, operation=operation),
             ) from exc
 
 
@@ -416,14 +472,24 @@ def _temporary_remote_path(remote_path: str) -> str:
     return path.with_name(temp_name).as_posix()
 
 
-def _transport_error(exc: BaseException) -> ApiError:
+def _transport_error(exc: BaseException, *, operation: str | None = None) -> ApiError:
     return ApiError(
         status_code=502,
         code="files.remote_transport_error",
         message="Remote file transport failed.",
         retryable=True,
-        details={"error_type": type(exc).__name__},
+        details=_transport_details(exc, operation=operation),
     )
+
+
+def _transport_details(exc: BaseException, *, operation: str | None = None) -> dict[str, str]:
+    details = {
+        "backend": "sftp",
+        "error_type": type(exc).__name__,
+    }
+    if operation is not None:
+        details["operation"] = operation
+    return details
 
 
 def _forbidden_path_escape() -> ApiError:

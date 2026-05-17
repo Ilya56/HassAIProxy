@@ -57,6 +57,13 @@ class FileService:
         resolved = self._path_policy.resolve_read_path(path)
         return await self.get_metadata_for_resolved(resolved)
 
+    async def check_storage(self) -> bool:
+        try:
+            await self._backend.check_access()
+        except ApiError:
+            return False
+        return True
+
     async def read_writable_file(self, path: str) -> FileContent:
         resolved = self._path_policy.resolve_write_path(path)
         file_stat = await self._backend.stat(resolved.relative_path)
