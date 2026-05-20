@@ -262,6 +262,28 @@ def test_file_service_check_storage_returns_false_on_backend_error() -> None:
     assert asyncio.run(service.check_storage()) is False
 
 
+def test_sftp_missing_parent_path_is_created_on_write() -> None:
+    class MissingParentSftpClient(FakeSftpClient):
+        async def lstat(self, path: str) -> FakeSftpAttrs:
+            if path == "/config":
+                return FakeSftpAttrs(stat.S_IFDIR)
+            if path in self.dirs or path in self.files:
+                return await super().lstat(path)
+            raise asyncssh.SFTPNoSuchPath(path)
+
+    fake_sftp = MissingParentSftpClient()
+    service = FileService(Settings(), backend=FakeableSftpFileBackend(fake_sftp))
+
+    exists = asyncio.run(service.writable_file_exists("/config/packages/ai/co2.yaml"))
+    written = asyncio.run(service.write_writable_file("/config/packages/ai/co2.yaml", "automation: []\n"))
+
+    assert exists is False
+    assert written.path == "/config/packages/ai/co2.yaml"
+    assert "/config/packages" in fake_sftp.dirs
+    assert "/config/packages/ai" in fake_sftp.dirs
+    assert fake_sftp.files["/config/packages/ai/co2.yaml"] == b"automation: []\n"
+
+
 def test_sftp_backend_requires_host() -> None:
     settings = Settings(file_backend="sftp", sftp_private_key_path="./secrets/ha_proxy_sftp_key")
 

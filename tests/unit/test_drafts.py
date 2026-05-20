@@ -5,8 +5,11 @@ from hashlib import sha256
 from fastapi.testclient import TestClient
 
 from homeassistant_proxy.config import get_settings
-from homeassistant_proxy.dependencies import get_ha_client
+from homeassistant_proxy.core.errors import ApiError
+from homeassistant_proxy.dependencies import get_file_service, get_ha_client
 from homeassistant_proxy.main import create_app
+from homeassistant_proxy.services.file_backends import FileBackendStat
+from homeassistant_proxy.services.file_service import FileService
 
 
 class FakeHomeAssistantClient:
@@ -34,7 +37,42 @@ class FakeHomeAssistantClient:
         return {}
 
 
-def _client(monkeypatch, tmp_path, ha_client: FakeHomeAssistantClient | None = None) -> TestClient:
+class MissingParentSftpLikeBackend:
+    async def list_files(self, relative_dir: str) -> list[str]:
+        return []
+
+    async def read_text(self, relative_path: str) -> str:
+        raise ApiError(
+            status_code=404,
+            code="files.not_found",
+            message="The requested file was not found.",
+            retryable=False,
+        )
+
+    async def stat(self, relative_path: str) -> FileBackendStat:
+        raise ApiError(
+            status_code=404,
+            code="files.not_found",
+            message="The requested file was not found.",
+            retryable=False,
+        )
+
+    async def check_access(self) -> None:
+        return None
+
+    async def write_text(self, relative_path: str, content: str) -> None:
+        return None
+
+    async def delete_file(self, relative_path: str) -> None:
+        return None
+
+
+def _client(
+    monkeypatch,
+    tmp_path,
+    ha_client: FakeHomeAssistantClient | None = None,
+    file_backend: object | None = None,
+) -> TestClient:
     monkeypatch.setenv("APP_API_KEY", "test-key")
     monkeypatch.setenv("ACTOR_NAME", "owner")
     monkeypatch.setenv("CONFIG_ROOT", str(tmp_path / "config"))
@@ -46,6 +84,9 @@ def _client(monkeypatch, tmp_path, ha_client: FakeHomeAssistantClient | None = N
     get_settings.cache_clear()
     app = create_app()
     app.dependency_overrides[get_ha_client] = lambda: ha_client or FakeHomeAssistantClient()
+    if file_backend is not None:
+        settings = get_settings()
+        app.dependency_overrides[get_file_service] = lambda: FileService(settings, backend=file_backend)
     return TestClient(app)
 
 
@@ -81,6 +122,29 @@ def test_create_draft_for_new_ai_package_file(monkeypatch, tmp_path) -> None:
     assert "+automation: []" in body["diff_text"]
     assert str(tmp_path) not in body["diff_text"]
     assert not (tmp_path / "config" / "packages" / "ai" / "co2.yaml").exists()
+    get_settings.cache_clear()
+
+
+def test_create_draft_succeeds_when_sftp_parent_folder_is_missing(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path, file_backend=MissingParentSftpLikeBackend())
+
+    response = client.post(
+        "/drafts/create",
+        headers=_auth_headers(),
+        json={
+            "target_path": "/config/packages/ai/co2.yaml",
+            "operation_type": "create",
+            "proposed_content": "automation: []\n",
+            "summary": "Add CO2 package",
+            "reason": "Prepare a new AI-owned package file.",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["target_path"] == "/config/packages/ai/co2.yaml"
+    assert body["status"] == "ready_for_approval"
+    assert "+automation: []" in body["diff_text"]
     get_settings.cache_clear()
 
 

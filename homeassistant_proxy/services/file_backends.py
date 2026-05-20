@@ -161,7 +161,7 @@ class SftpFileBackend:
             try:
                 async with sftp.open(remote_path, "rb") as remote_file:
                     content = await remote_file.read()
-            except asyncssh.SFTPNoSuchFile as exc:
+            except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
                 raise _not_found() from exc
             except ApiError:
                 raise
@@ -198,7 +198,7 @@ class SftpFileBackend:
             await self._assert_safe_remote_file(sftp, remote_path)
             try:
                 await sftp.remove(remote_path)
-            except asyncssh.SFTPNoSuchFile as exc:
+            except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
                 raise _not_found() from exc
             except ApiError:
                 raise
@@ -243,7 +243,7 @@ class SftpFileBackend:
             await self._assert_safe_remote_file(sftp, remote_path)
             try:
                 attrs = await sftp.stat(remote_path)
-            except asyncssh.SFTPNoSuchFile as exc:
+            except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
                 raise _not_found() from exc
             except ApiError:
                 raise
@@ -302,7 +302,7 @@ class SftpFileBackend:
     async def _assert_safe_remote_file(self, sftp: asyncssh.SFTPClient, remote_path: str) -> None:
         try:
             attrs = await sftp.lstat(remote_path)
-        except asyncssh.SFTPNoSuchFile as exc:
+        except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
             raise _not_found() from exc
         except ApiError:
             raise
