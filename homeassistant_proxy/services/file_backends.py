@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import stat
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
@@ -15,6 +16,8 @@ from asyncssh.constants import FXR_ATOMIC, FXR_OVERWRITE
 
 from homeassistant_proxy.config import Settings
 from homeassistant_proxy.core.errors import ApiError
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -257,6 +260,14 @@ class SftpFileBackend:
 
     @asynccontextmanager
     async def _sftp_client(self) -> AsyncIterator[asyncssh.SFTPClient]:
+        logger.info(
+            "sftp_connect_started host=%s port=%s username=%s root=%s timeout=%s",
+            self._host,
+            self._port,
+            self._username,
+            self._remote_root,
+            self._timeout,
+        )
         try:
             async with asyncssh.connect(
                 self._host,
@@ -267,6 +278,7 @@ class SftpFileBackend:
                 connect_timeout=self._timeout,
             ) as connection:
                 async with connection.start_sftp_client() as sftp:
+                    logger.info("sftp_connect_succeeded host=%s root=%s", self._host, self._remote_root)
                     yield sftp
         except ApiError:
             raise
@@ -303,6 +315,10 @@ class SftpFileBackend:
         try:
             attrs = await sftp.lstat(remote_path)
         except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath) as exc:
+            logger.info(
+                "sftp_remote_file_not_found operation=assert_safe_remote_file error_type=%s",
+                type(exc).__name__,
+            )
             raise _not_found() from exc
         except ApiError:
             raise
@@ -343,6 +359,7 @@ class SftpFileBackend:
                 attrs = await sftp.lstat(current_remote)
             except (asyncssh.SFTPNoSuchFile, asyncssh.SFTPNoSuchPath):
                 try:
+                    logger.info("sftp_create_remote_dir relative_dir=%s", current_relative)
                     await sftp.mkdir(current_remote)
                     attrs = await sftp.lstat(current_remote)
                 except asyncssh.Error as exc:
@@ -473,12 +490,19 @@ def _temporary_remote_path(remote_path: str) -> str:
 
 
 def _transport_error(exc: BaseException, *, operation: str | None = None) -> ApiError:
+    details = _transport_details(exc, operation=operation)
+    logger.warning(
+        "sftp_transport_error operation=%s error_type=%s details=%s",
+        operation,
+        type(exc).__name__,
+        details,
+    )
     return ApiError(
         status_code=502,
         code="files.remote_transport_error",
         message="Remote file transport failed.",
         retryable=True,
-        details=_transport_details(exc, operation=operation),
+        details=details,
     )
 
 

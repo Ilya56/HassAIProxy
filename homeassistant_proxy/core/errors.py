@@ -1,7 +1,10 @@
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -23,7 +26,16 @@ class ApiError(Exception):
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
-    async def handle_api_error(_: Request, exc: ApiError) -> JSONResponse:
+    async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
+        logger.warning(
+            "api_error path=%s method=%s status_code=%s code=%s retryable=%s details=%s",
+            request.url.path,
+            request.method,
+            exc.status_code,
+            exc.code,
+            exc.retryable,
+            exc.details,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -33,4 +45,3 @@ def install_error_handlers(app: FastAPI) -> None:
                 "retryable": exc.retryable,
             },
         )
-

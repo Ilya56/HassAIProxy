@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from sqlite3 import Row
 from uuid import uuid4
@@ -24,6 +25,8 @@ from homeassistant_proxy.services.file_service import FileService
 from homeassistant_proxy.services.reload_service import ReloadService
 from homeassistant_proxy.services.validation_service import DraftValidationService
 
+logger = logging.getLogger(__name__)
+
 
 class DraftService:
     def __init__(self, settings: Settings, file_service: FileService, reload_service: ReloadService) -> None:
@@ -36,6 +39,12 @@ class DraftService:
         self._audit_service = AuditService(self._store)
 
     async def create_draft(self, request: CreateDraftRequest) -> Draft:
+        logger.info(
+            "draft_create_started operation_type=%s target_path=%s actor=%s",
+            request.operation_type,
+            request.target_path,
+            self._settings.actor_name,
+        )
         if request.operation_type == "delete":
             raise ApiError(
                 status_code=422,
@@ -45,16 +54,33 @@ class DraftService:
             )
 
         target_path = self._file_service.normalize_writable_path(request.target_path)
+        logger.info(
+            "draft_create_path_normalized operation_type=%s target_path=%s",
+            request.operation_type,
+            target_path,
+        )
         validation = self._validation_service.validate_proposed_content(
             target_path=target_path,
             proposed_content=request.proposed_content,
+        )
+        logger.info(
+            "draft_create_validation_complete target_path=%s ok=%s errors=%s",
+            target_path,
+            validation.ok,
+            validation.errors,
         )
         self._raise_if_invalid(validation)
 
         base_content = ""
         base_hash: str | None = None
         if request.operation_type == "create":
-            if await self._file_service.writable_file_exists(target_path):
+            target_exists = await self._file_service.writable_file_exists(target_path)
+            logger.info(
+                "draft_create_target_exists_checked target_path=%s exists=%s",
+                target_path,
+                target_exists,
+            )
+            if target_exists:
                 raise ApiError(
                     status_code=409,
                     code="drafts.target_already_exists",
@@ -116,6 +142,13 @@ class DraftService:
                 ),
             )
 
+        logger.info(
+            "draft_create_stored draft_id=%s target_path=%s operation_type=%s status=%s",
+            draft_id,
+            target_path,
+            request.operation_type,
+            "ready_for_approval",
+        )
         return await self.get_draft(draft_id)
 
     async def get_draft(self, draft_id: str) -> Draft:

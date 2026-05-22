@@ -8,9 +8,11 @@ from homeassistant_proxy.api.ha_read import router as ha_read_router
 from homeassistant_proxy.api.health import router as health_router
 from homeassistant_proxy.api.reload import router as reload_router
 from homeassistant_proxy.core.errors import install_error_handlers
+from homeassistant_proxy.core.logging import configure_logging
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(
         title="Home Assistant GPT Proxy API",
         version="0.1.0",
