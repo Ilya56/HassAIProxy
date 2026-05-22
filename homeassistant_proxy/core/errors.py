@@ -4,6 +4,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from homeassistant_proxy.core.sentry import capture_api_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,15 @@ class ApiError(Exception):
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
+        if exc.status_code >= 500:
+            capture_api_error(
+                exc,
+                path=request.url.path,
+                method=request.method,
+                status_code=exc.status_code,
+                code=exc.code,
+                details=exc.details,
+            )
         logger.warning(
             "api_error path=%s method=%s status_code=%s code=%s retryable=%s details=%s",
             request.url.path,

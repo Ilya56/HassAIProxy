@@ -7,12 +7,16 @@ from homeassistant_proxy.api.files import router as files_router
 from homeassistant_proxy.api.ha_read import router as ha_read_router
 from homeassistant_proxy.api.health import router as health_router
 from homeassistant_proxy.api.reload import router as reload_router
+from homeassistant_proxy.config import get_settings
 from homeassistant_proxy.core.errors import install_error_handlers
 from homeassistant_proxy.core.logging import configure_logging
+from homeassistant_proxy.core.sentry import configure_sentry
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     configure_logging()
+    configure_sentry(settings)
     app = FastAPI(
         title="Home Assistant GPT Proxy API",
         version="0.1.0",
@@ -26,7 +30,15 @@ def create_app() -> FastAPI:
     app.include_router(drafts_router)
     app.include_router(reload_router)
     app.include_router(audit_router)
+    if settings.sentry_debug_route_enabled:
+        _install_sentry_debug_route(app)
     return app
+
+
+def _install_sentry_debug_route(app: FastAPI) -> None:
+    @app.get("/sentry-debug", include_in_schema=False)
+    async def trigger_sentry_error() -> None:
+        division_by_zero = 1 / 0
 
 
 app = create_app()

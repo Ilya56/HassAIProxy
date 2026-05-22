@@ -50,6 +50,8 @@ Edit `.env.docker`:
 - `SFTP_PORT`: usually `22`.
 - `SFTP_USERNAME`: usually the user configured in the Advanced SSH & Web Terminal add-on.
 - `SFTP_ROOT`: `/config`.
+- `SENTRY_DSN`: optional Sentry project DSN for production issue monitoring.
+- `SENTRY_TRACES_SAMPLE_RATE`: optional performance trace sample rate, such as `0.1`.
 
 Keep these v1 defaults unless you are intentionally changing scope:
 
@@ -150,6 +152,23 @@ docker compose ps
 docker compose logs --tail 100 ha-proxy
 docker compose logs --tail 100 cloudflared
 ```
+
+### Optional Sentry Verification
+
+If `SENTRY_DSN` is configured, you can verify the SDK once:
+
+1. Set `SENTRY_DEBUG_ROUTE_ENABLED=true` in `.env.docker`.
+2. Restart the proxy:
+
+   ```powershell
+   docker compose restart ha-proxy
+   ```
+
+3. Open `http://127.0.0.1:8000/sentry-debug` or the Cloudflare URL with `/sentry-debug`.
+4. Confirm the test error appears in Sentry.
+5. Set `SENTRY_DEBUG_ROUTE_ENABLED=false` and restart `ha-proxy` again.
+
+The debug route is disabled by default and excluded from the OpenAPI schema.
 
 ## 6. Verify Locally
 
