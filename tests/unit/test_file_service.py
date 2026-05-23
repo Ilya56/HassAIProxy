@@ -199,6 +199,50 @@ def test_sftp_backend_passes_key_passphrase_to_asyncssh(monkeypatch) -> None:
     asyncio.run(use_client())
 
     assert captured_kwargs["passphrase"] == "test-passphrase"
+    assert "known_hosts" not in captured_kwargs
+
+
+def test_sftp_backend_passes_known_hosts_path_to_asyncssh(monkeypatch) -> None:
+    captured_kwargs = {}
+
+    class FakeSftpContext:
+        async def __aenter__(self) -> object:
+            return object()
+
+        async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+            return None
+
+    class FakeConnection:
+        async def __aenter__(self) -> "FakeConnection":
+            return self
+
+        async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+            return None
+
+        def start_sftp_client(self) -> FakeSftpContext:
+            return FakeSftpContext()
+
+    def fake_connect(*args: object, **kwargs: object) -> FakeConnection:
+        captured_kwargs.update(kwargs)
+        return FakeConnection()
+
+    monkeypatch.setattr("homeassistant_proxy.services.file_backends.asyncssh.connect", fake_connect)
+    backend = SftpFileBackend(
+        Settings(
+            file_backend="sftp",
+            sftp_host="homeassistant.local",
+            sftp_private_key_path="./secrets/ha_proxy_sftp_key",
+            sftp_known_hosts_path="./secrets/known_hosts",
+        )
+    )
+
+    async def use_client() -> None:
+        async with backend._sftp_client():
+            pass
+
+    asyncio.run(use_client())
+
+    assert captured_kwargs["known_hosts"] == "./secrets/known_hosts"
 
 
 def test_sftp_backend_reports_connect_error_details(monkeypatch) -> None:

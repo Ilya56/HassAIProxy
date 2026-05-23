@@ -14,6 +14,7 @@ services:
       HA_TOKEN_FILE: /run/secrets/ha_token
       SFTP_PRIVATE_KEY_PATH: /run/secrets/sftp_private_key
       SFTP_PRIVATE_KEY_PASSPHRASE_FILE: /run/secrets/sftp_private_key_passphrase
+      SFTP_KNOWN_HOSTS_PATH: /run/secrets/sftp_known_hosts
       SQLITE_PATH: /app/data/homeassistant_proxy.sqlite3
       BACKUP_ROOT: /app/data/backups
       FILE_BACKEND: sftp
@@ -22,6 +23,7 @@ services:
       - ha_token
       - sftp_private_key
       - sftp_private_key_passphrase
+      - sftp_known_hosts
     volumes:
       - proxy_data:/app/data
     ports:
@@ -49,6 +51,8 @@ secrets:
     file: ./.secrets/ha_proxy_sftp_key
   sftp_private_key_passphrase:
     file: ./.secrets/sftp_private_key_passphrase.txt
+  sftp_known_hosts:
+    file: ./.secrets/sftp_known_hosts
   cloudflare_tunnel_token:
     file: ./.secrets/cloudflare_tunnel_token.txt
 

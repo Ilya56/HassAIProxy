@@ -113,6 +113,25 @@ If the key has no passphrase, create an empty file because Docker Compose mounts
 [IO.File]::WriteAllText((Join-Path (Get-Location) ".secrets\sftp_private_key_passphrase.txt"), "", [Text.UTF8Encoding]::new($false))
 ```
 
+### SFTP Known Hosts
+
+The proxy verifies the Home Assistant SSH host key before connecting over SFTP. Create a known-hosts
+file for the exact `SFTP_HOST` value you configured. If `SFTP_HOST=192.168.1.50`, run:
+
+```powershell
+ssh-keyscan -p 22 192.168.1.50 | Out-File -Encoding ascii .\.secrets\sftp_known_hosts
+```
+
+Then inspect the captured fingerprint:
+
+```powershell
+ssh-keygen -lf .\.secrets\sftp_known_hosts
+```
+
+For best security, compare this fingerprint with the SSH host key fingerprint shown by the Home
+Assistant SSH add-on or a trusted local SSH session. If Home Assistant regenerates its SSH host key,
+replace `.secrets\sftp_known_hosts` and restart `ha-proxy`.
+
 ## 4. Create Cloudflare Tunnel
 
 Yes, this can run through Docker Compose. The Compose stack uses the official `cloudflare/cloudflared` image and reads the tunnel token from `.secrets/cloudflare_tunnel_token.txt`.

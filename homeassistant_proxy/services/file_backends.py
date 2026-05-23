@@ -130,6 +130,7 @@ class SftpFileBackend:
         self._username = settings.sftp_username
         self._private_key_path = settings.sftp_private_key_path
         self._private_key_passphrase = settings.sftp_private_key_passphrase or None
+        self._known_hosts_path = settings.sftp_known_hosts_path or None
         self._remote_root = _normalize_remote_root(settings.sftp_root)
         self._timeout = settings.request_timeout_seconds
 
@@ -269,14 +270,17 @@ class SftpFileBackend:
             self._timeout,
         )
         try:
-            async with asyncssh.connect(
-                self._host,
-                port=self._port,
-                username=self._username,
-                client_keys=[self._private_key_path],
-                passphrase=self._private_key_passphrase,
-                connect_timeout=self._timeout,
-            ) as connection:
+            connect_kwargs = {
+                "port": self._port,
+                "username": self._username,
+                "client_keys": [self._private_key_path],
+                "passphrase": self._private_key_passphrase,
+                "connect_timeout": self._timeout,
+            }
+            if self._known_hosts_path is not None:
+                connect_kwargs["known_hosts"] = self._known_hosts_path
+
+            async with asyncssh.connect(self._host, **connect_kwargs) as connection:
                 async with connection.start_sftp_client() as sftp:
                     logger.info("sftp_connect_succeeded host=%s root=%s", self._host, self._remote_root)
                     yield sftp
